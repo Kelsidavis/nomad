@@ -234,10 +234,12 @@ MANEUVERS = {
 }
 
 
-def route(frm, to, units="km"):
+def route(frm, to, units="km", via=()):
     """Driving route from the local Valhalla, in the same shape as the online OSRM route. Each step also carries
-    Valhalla's spoken wording (verbal_*), with distances in miles when units is "mi"."""
-    body = {"locations": [{"lat": frm[0], "lon": frm[1]}, {"lat": to[0], "lon": to[1]}],
+    Valhalla's spoken wording (verbal_*), with distances in miles when units is "mi". via: stops on the way
+    ([lat, lon] each), in order."""
+    body = {"locations": [{"lat": frm[0], "lon": frm[1]}, *({"lat": v[0], "lon": v[1], "type": "break"} for v in via),
+                          {"lat": to[0], "lon": to[1]}],
             "costing": "auto", "units": "miles" if units == "mi" else "kilometers",
             "directions_options": {"language": "en-US", "units": "miles" if units == "mi" else "kilometers"}}
     per_unit = 1609.344 if units == "mi" else 1000  # Valhalla reports lengths in the requested unit

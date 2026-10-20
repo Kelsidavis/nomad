@@ -486,19 +486,20 @@ def nominatim(q, lat, lon):
     return out
 
 
-def route(frm, to, units="km"):
+def route(frm, to, units="km", via=()):
     """Local Valhalla first; the online OSRM demo server when it isn't running."""
     try:
-        return offline.route(frm, to, units)
+        return offline.route(frm, to, units, via)
     except (OSError, urllib.error.URLError, KeyError, ValueError) as e:
         if OFFLINE_ONLY:
             raise ValueError(f"offline routing failed: {e}")
-    return online_route(frm, to)
+    return online_route(frm, to, via)
 
 
-def online_route(frm, to):
+def online_route(frm, to, via=()):
     """Driving route from OSRM, with spoken-style instructions per step."""
-    url = (f"https://router.project-osrm.org/route/v1/driving/{frm[1]},{frm[0]};{to[1]},{to[0]}"
+    pts = ";".join(f"{p[1]},{p[0]}" for p in [frm, *via, to])
+    url = (f"https://router.project-osrm.org/route/v1/driving/{pts}"
            "?overview=full&geometries=geojson&steps=true")
     data = json.loads(fetch(url, timeout=15))
     if data.get("code") != "Ok" or not data.get("routes"):
@@ -858,7 +859,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/route":
                 frm = [float(v) for v in q["from"].split(",")]
                 to = [float(v) for v in q["to"].split(",")]
-                return self.send(200, route(frm, to, q.get("units", "km")))
+                via = [[float(v) for v in p.split(",")] for p in q.get("via", "").split(";") if p]  # stops on the way
+                return self.send(200, route(frm, to, q.get("units", "km"), via[:5]))
             if path == "/api/media":
                 return self.send(200, media_library()["body"], "application/json")
             if path == "/api/volume":

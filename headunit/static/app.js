@@ -509,7 +509,8 @@ function snap(r, p, startIdx) {
 async function fetchRoute(dest) {
   if (!lastPos) throw new Error("No GPS fix yet");
   const units = settings.units === "imperial" ? "mi" : "km";
-  const r = await api(`/api/route?from=${lastPos.lat},${lastPos.lon}&to=${dest.lat},${dest.lon}&units=${units}`);
+  const via = (nav.dest === dest ? nav.stops || [] : []).map((s) => `${s.lat},${s.lon}`).join(";");
+  const r = await api(`/api/route?from=${lastPos.lat},${lastPos.lon}&to=${dest.lat},${dest.lon}&units=${units}${via ? `&via=${via}` : ""}`);
   return prepareRoute(r);
 }
 
@@ -520,7 +521,7 @@ async function previewRoute(dest) {
     toast("Finding route…", 8000);
     const r = await fetchRoute(dest);
     $("#toast").hidden = true;
-    Object.assign(nav, { route: r, dest, active: false });
+    Object.assign(nav, { route: r, dest, active: false, stops: [] });
     drawRoute(r);
     setFollow(false);
     const b = new maplibregl.LngLatBounds();
@@ -552,7 +553,7 @@ function startNav() {
 
 function endNav(arrived = false) {
   const last = nav.route?.steps[nav.route.steps.length - 1];
-  Object.assign(nav, { route: null, dest: null, active: false, wx: null });
+  Object.assign(nav, { route: null, dest: null, active: false, wx: null, stops: [] });
   paintRouteWeather();
   clearRoute();
   if (arrived && !nav.saidArrival) say(last?.type === "arrive" && last.instruction ? `${last.instruction}.` : "You have arrived");
@@ -615,7 +616,7 @@ function promptTurn(r, k, toTurn, v) {
   if (toTurn <= now) {
     if (nav.spoken[k + "n"]) return;
     nav.spoken[k + "n"] = nav.spoken[k + "a"] = nav.spoken[k + "e"] = true;
-    if (st.type === "arrive") nav.saidArrival = true;
+    if (st.type === "arrive" && k === r.steps.length - 1) nav.saidArrival = true;  // (not a stop on the way)
     return say(promptText(r, k, "now"));
   }
   if (toTurn <= near && leg > near + 120) {
@@ -742,6 +743,7 @@ const LAYERS = {
 };
 let kbShiftOnce = false;  // Shift for one letter; tap twice (caps) to stay
 function openSearch(text = "", mode = "places") {
+  $("#keyboard").hidden = false;
   query = text;
   searchMode = mode;
   $("#search-overlay").dataset.mode = mode;
@@ -3004,6 +3006,88 @@ $("#drives-seg").addEventListener("click", async (e) => {
   loadDrives();
 });
 
+
+// ---- along the way: gas, food, coffee, rest areas ahead on the route; tap one to add it as a stop ----
+const AHEAD = { gas: "gas", fuel: "gas", food: "food", restaurant: "restaurant", coffee: "coffee", "rest area": "rest area",
+  restroom: "rest area", bathroom: "rest area", hotel: "hotel", motel: "motel" };
+async function findAhead(what) {
+  const r = nav.route;
+  if (!r || !nav.active) { openSearch(what); return null; }
+  const pos = lastPos ? [lastPos.lat, lastPos.lon] : r.coords[0];
+  // the route ahead, as (point, km along) every ~8 km for the next ~100 km
+  let start = 0, best = Infinity;
+  for (let i = 0; i < r.coords.length; i += 5) {
+    const d = haversine(pos[0], pos[1], r.coords[i][0], r.coords[i][1]);
+    if (d < best) { best = d; start = i; }
+  }
+  const ahead = [];
+  let km = 0;
+  for (let i = start + 1; i < r.coords.length && km < 100; i++) {
+    km += haversine(r.coords[i - 1][0], r.coords[i - 1][1], r.coords[i][0], r.coords[i][1]) / 1000;
+    ahead.push([r.coords[i][0], r.coords[i][1], km]);
+  }
+  if (!ahead.length) return [];
+  const samples = ahead.filter((_, i) => i % Math.max(1, Math.round(ahead.length / 12)) === 0).filter((p, i, a) => !i || p[2] - a[i - 1][2] > 6);
+  toast(`Looking for ${what} ahead…`, 10000);
+  const found = new Map();
+  await Promise.all(samples.slice(0, 12).map(async ([la, lo]) => {
+    const { results = [] } = await api(`/api/search?q=${encodeURIComponent(AHEAD[what] || what)}&lat=${la}&lon=${lo}`).catch(() => ({}));
+    for (const x of results) {
+      let off = Infinity, along = 0;
+      for (const p of ahead) {  // the closest point of the route to it
+        const d = haversine(x.lat, x.lon, p[0], p[1]);
+        if (d < off) { off = d; along = p[2]; }
+      }
+      if (off < 1500 && along > 0.3) found.set(`${x.name}|${x.lat.toFixed(4)}`, { ...x, along, off });
+    }
+  }));
+  $("#toast").hidden = true;
+  const list = [...found.values()].sort((a, b) => a.along - b.along).slice(0, 15);
+  showAhead(what, list);
+  return list;
+}
+function showAhead(what, list) {
+  openSearch("", "ahead");
+  $("#keyboard").hidden = true;  // a list to tap, nothing to type
+  $("#search-text").textContent = `${what[0].toUpperCase()}${what.slice(1)} ahead`;
+  const box = $("#search-results");
+  if (!list.length) return (box.innerHTML = `<div class="empty">Nothing found within 1 mile of the route in the next 60 miles.</div>`);
+  box.replaceChildren(...list.map((x) => {
+    const b = document.createElement("button");
+    b.className = "list-item";
+    b.innerHTML = `<div><div class="t"></div><div class="s"></div></div><div class="d"></div>`;
+    b.querySelector(".t").textContent = x.name;
+    b.querySelector(".s").textContent = [x.address, x.off > 200 ? `${distText(x.off)} off the route` : "on the route", paidAt(x)].filter(Boolean).join(" · ");
+    b.querySelector(".d").textContent = `in ${distText(x.along * 1000)}`;
+    b.onclick = () => addStop(x);
+    return b;
+  }));
+}
+async function addStop(x) {
+  closeSearch();
+  nav.stops = [...(nav.stops || []), { name: x.name, lat: x.lat, lon: x.lon }];
+  try {
+    const r = await fetchRoute(nav.dest);
+    Object.assign(nav, { route: r, idx: 0, offCount: 0, spoken: {}, lastReroute: Date.now() });
+    drawRoute(r);
+    prefetchPrompts(r, lastState?.position?.speed_mps ?? 0);
+    renderNav();
+    say(`Adding a stop at ${x.name}, then on to ${nav.dest.name}`);
+  } catch (e) {
+    nav.stops.pop();
+    toast(`Couldn't add the stop: ${e.message}`);
+  }
+}
+// a stop counts as visited within 150 m
+function checkStops(p) {
+  if (!nav.active || !nav.stops?.length || !p) return;
+  const s = nav.stops[0];
+  if (haversine(p.lat, p.lon, s.lat, s.lon) < 150) {
+    nav.stops.shift();
+    say(`You've reached ${s.name}. ${nav.stops.length ? `Next stop, ${nav.stops[0].name}.` : `Then on to ${nav.dest.name}.`}`);
+  }
+}
+
 // ---- live state ----
 let lastState = null;
 function onState(s) {
@@ -3016,6 +3100,7 @@ function onState(s) {
   checkQuakeAlerts(s);
   checkMesh(s);
   checkAlerts(s);
+  checkStops(p);
   paintEngineQuick(s);
   paintLimit(s);
   $("#st-net").setAttribute("class", "st " + (s.data === "offline" ? "off" : s.online ? (s.data === "saver" ? "warn" : "ok") : "off"));
@@ -3214,6 +3299,15 @@ async function runCommand(raw, fromModel = false) {
     await previewRoute(results[0]);
     if (nav.route) startNav();
     return `Navigating to ${results[0].name}`;
+  }
+  if ((m = text.match(/(gas|fuel|food|restaurants?|coffee|rest areas?|restrooms?|bathrooms?|hotels?|motels?) (?:ahead|on the way|along the (?:way|route)|coming up)|^next (gas|rest area|coffee)/))) {
+    let what = m[1] || m[2];
+    if (!AHEAD[what] && AHEAD[what.replace(/s$/, "")]) what = what.replace(/s$/, "");  // "rest areas" (not "gas")
+    if (!nav.active) { openSearch(AHEAD[what] || what); return "Searching nearby (no route)"; }
+    const list = await findAhead(what);
+    const msg = list?.length ? `${list[0].name}, in ${distText(list[0].along * 1000).replace("mi", "miles").replace("km", "kilometers")}. ${list.length > 1 ? `${list.length - 1} more on the screen.` : ""}` : `No ${what} along the route`;
+    say(msg);
+    return msg;
   }
   if (/^(?:find (?:me )?(?:some )?|(?:the )?nearest |closest |i need |we need |low on )(gas|fuel|a gas station|gas station)/.test(text)) {
     query = "gas";
