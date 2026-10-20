@@ -683,7 +683,8 @@ function renderNav() {
   }
   const next = r.steps[k + 1];
   $("#nav-then").textContent = next && r.stepAlong[k + 1] - r.stepAlong[k] < 300 ? `Then: ${next.instruction}` : "";
-  $("#nav-eta").textContent = fmtClock(new Date(Date.now() + leftS * 1000));
+  nav.etaAt = Date.now() + leftS * 1000;
+  $("#nav-eta").textContent = fmtClock(new Date(nav.etaAt));
   $("#nav-left-time").textContent = fmtDur(leftS);
   const d = fmtDist(Math.max(0, total - along));
   $("#nav-left-dist").textContent = d.v;
@@ -3535,7 +3536,7 @@ async function runCommand(raw, fromModel = false) {
   }
   if (/(send|share|tell) (my |our )?(eta|arrival)( time)? (to|on|with) the mesh|tell the mesh (my|our) eta/.test(text)) {
     if (!nav.active || !nav.dest) return "No route: there's no arrival time to send";
-    const msg = `ETA ${$("#nav-eta").textContent} at ${nav.dest.name} (${$("#nav-left-time").textContent} out${whereNow ? `, now ${whereText()}` : ""})`;
+    const msg = `ETA ${fmtClock(new Date(nav.etaAt || Date.now()), true)} at ${nav.dest.name} (${$("#nav-left-time").textContent} out${whereNow ? `, now ${whereText()}` : ""})`;
     await meshSend(msg);
     return `Sent to the mesh: ${msg}`;
   }
