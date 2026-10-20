@@ -616,6 +616,17 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 .switch.on { background: var(--accent); }
 .switch.on::after { left: 1.4rem; background: var(--accent-text); }
 
+/* trip computer */
+.trip-card { padding: 0.8rem 1.1rem; }
+.trip-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem 0.9rem; padding: 0.55rem 0; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.trip-row span { color: var(--text-2); font-size: 0.92rem; }
+.trip-row b { min-width: 3.6rem; }
+.trip-row { flex-wrap: nowrap; }
+.trip-stats { flex: 1; display: flex; flex-wrap: wrap; gap: 0.1rem 0.8rem; }
+.trip-row .btn { margin-left: auto; height: 2.3rem; padding: 0 0.8rem; font-size: 0.9rem; }
+.trip-row.foot { border-bottom: 0; justify-content: space-between; }
+.trip-row .bad { color: #ff6b5e; }
+
 /* video: full screen */
 #video-stage { background: #000; display: grid; place-items: center; z-index: 2100; }
 #video-stage[hidden] { display: none; }

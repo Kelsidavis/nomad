@@ -195,7 +195,7 @@ function showView(name) {
   if (name === "radio") loadRadio();
   if (name === "weather") loadWeather();
   if (name === "assistant") renderChat();
-  if (name === "settings") { paintBt(); paintWifi(); }
+  if (name === "settings") { paintBt(); paintWifi(); loadTrip(); }
   if (name === "emergency") loadEmergency();
   if (name === "news") loadNews();
   renderNav();
@@ -730,6 +730,7 @@ function openSearch(text = "", mode = "places") {
   if (mode === "music") return loadMedia().then(() => showMusicSearch(query));
   if (mode === "pass") { showTyped(); return ($("#search-results").innerHTML = `<div class="empty">Password for “${escapeHtml(wifiTarget)}”, then Join.</div>`); }
   if (mode === "vibe") return ($("#search-results").innerHTML = `<div class="empty">Describe it: “chill night drive”, “90s singalong”, “something like Fleetwood Mac”…</div>`);
+  if (mode === "odo") return ($("#search-results").innerHTML = `<div class="empty">The odometer reading in ${settings.units === "imperial" ? "miles" : "km"}, then Set.</div>`);
   if (mode === "mesh") return ($("#search-results").innerHTML = `<div class="empty">${mesh.to ? `To ${escapeHtml(nodeName(mesh.to))} only` : "To everyone on the mesh"} · up to 228 characters, then Send.</div>`);
   if (mode === "feed") return ($("#search-results").innerHTML = `<div class="empty">The feed's address, like npr.org/rss, then Add.</div>`);
   if (mode === "plname") return ($("#search-results").innerHTML = `<div class="empty">Name the playlist, then Save.</div>`);
@@ -749,7 +750,7 @@ function renderKeyboard() {
     }
     return `<div class="kb-row">${keys.join("")}</div>`;
   });
-  const go = { chat: "Send", pass: "Join", vibe: "Mix", plname: "Save", feed: "Add", mesh: "Send" }[searchMode] || "Search";
+  const go = { chat: "Send", pass: "Join", vibe: "Mix", plname: "Save", feed: "Add", mesh: "Send", odo: "Set" }[searchMode] || "Search";
   rows.push(`<div class="kb-row"><button class="key wide" data-k="layer">${letters ? "123" : "ABC"}</button>
     <button class="key space" data-k=" ">space</button><button class="key wide go" data-k="go">${go}</button></div>`);
   kb.innerHTML = rows.join("");
@@ -800,6 +801,7 @@ async function runSearch() {
   if (searchMode === "vibe") { closeSearch(); return q && makeVibe(q); }
   if (searchMode === "feed") { closeSearch(); return q && addFeed(q); }
   if (searchMode === "mesh") { closeSearch(); return meshSend(query); }
+  if (searchMode === "odo") { closeSearch(); return setOdometer(q); }
   if (searchMode === "plname") { closeSearch(); return createPlaylist(q); }
   if (!q) return;
   const box = $("#search-results");
@@ -2377,6 +2379,7 @@ function kvRows(rows) {
 function renderVehicle(s) {
   const p = s.position, sys = s.system || {}, ph = s.phone || {}, batt = ph.status?.battery;
   renderObd(s.obd);
+  if (!tripInfo || Date.now() - (renderVehicle.tripAt || 0) > 5000) { renderVehicle.tripAt = Date.now(); loadTrip(); }
   drawCompass(p ? heading : null);
   const acc = ph.linear_accel;  // the phone's accelerometer, when one is connected
   drawG(s.gps.g || (acc ? [acc[0] / 9.81, acc[1] / 9.81] : null));
@@ -2620,6 +2623,78 @@ function haversine(la1, lo1, la2, lo2) {
   return 12742000 * Math.asin(Math.sqrt(a));
 }
 
+
+// ---- trip computer and engine warnings (trip.py) ----
+const MI = 1.609344;
+const distUnit = (km, digits = 1) => km == null ? "--" : settings.units === "imperial" ? `${(km / MI).toFixed(digits)} mi` : `${km.toFixed(digits)} km`;
+const econText = (mpg) => mpg == null ? "--" : settings.units === "imperial" ? `${mpg} mpg` : `${(235.21 / mpg).toFixed(1)} L/100 km`;
+let tripInfo = null;
+async function loadTrip() {
+  tripInfo = await api("/api/trip").catch(() => tripInfo);
+  if (currentView === "vehicle") renderTrip();
+  if (currentView === "settings") paintTripSettings();
+}
+function renderTrip() {
+  const t = tripInfo, box = $("#trip-kv");
+  if (!t) return;
+  const dur = (s) => s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`;
+  const rows = [];
+  for (const k of ["a", "b"]) {
+    const x = t.trips[k];
+    rows.push(`<div class="trip-row"><b>Trip ${k.toUpperCase()}</b><div class="trip-stats"><span>${distUnit(x.km)}</span><span>${econText(x.mpg)}</span>
+      <span>${x.avg_kmh != null ? (settings.units === "imperial" ? `${Math.round(x.avg_kmh / MI)} mph avg` : `${Math.round(x.avg_kmh)} km/h avg`) : "--"}</span>
+      <span>${dur(x.moving_s)} moving</span></div><button class="btn" data-action="trip-reset" data-trip="${k}">Reset</button></div>`);
+  }
+  rows.push(`<div class="trip-row foot"><span>Odometer ${t.odo_km != null ? distUnit(t.odo_km, 0) : "not set (Settings)"}</span>
+    <span>${t.oil_left_km == null ? "" : t.oil_left_km > 0 ? `Oil change in ${distUnit(t.oil_left_km, 0)}` : `<b class="bad">Oil change due</b>`}</span></div>`);
+  box.innerHTML = rows.join("");
+}
+function paintTripSettings() {
+  const t = tripInfo;
+  if (!t) return;
+  $("#odo-state").textContent = t.odo_km != null ? `${distUnit(t.odo_km, 0)} (counts up as you drive)` : "Set it once from the dash; it counts up from there";
+  $("#oil-state").textContent = t.oil_left_km == null ? "Set the odometer first" : t.oil_left_km > 0 ? `Next in ${distUnit(t.oil_left_km, 0)}` : "Due now";
+  const every = Math.round(t.oil_every_km / MI);
+  for (const b of $$("#oil-seg button")) b.classList.toggle("on", Math.abs(+b.dataset.v - every) < 50);
+}
+async function setOdometer(text) {
+  const v = parseFloat(text.replace(/,/g, ""));
+  if (!(v >= 0)) return toast("Type the odometer reading, like 182340");
+  tripInfo = await api("/api/trip/odometer", { json: { km: settings.units === "imperial" ? v * MI : v } });
+  paintTripSettings();
+  toast("Odometer set");
+}
+$("#oil-seg").addEventListener("click", async (e) => {
+  const v = e.target.closest("button")?.dataset.v;
+  if (!v || !tripInfo) return;
+  if (tripInfo.odo_km == null) return toast("Set the odometer first");
+  // only the interval: count from the last change
+  tripInfo = await api("/api/trip/oil", { json: { every_km: +v * MI } }).catch((err) => (toast(err.message), tripInfo));
+  paintTripSettings();
+});
+// Each warning is shown and said once while it lasts (the server keeps one id per occurrence).
+const alertsSaid = new Set(load("alertsSaid", []));
+function checkAlerts(s) {
+  for (const a of s.alerts || []) {
+    if (alertsSaid.has(a.id)) continue;
+    alertsSaid.add(a.id);
+    save("alertsSaid", [...alertsSaid].slice(-40));
+    toast(`${a.level === "bad" ? "⚠ " : ""}${a.text}`, a.level === "bad" ? 12000 : 7000);
+    say(a.text);
+  }
+}
+function paintEngineQuick(s) {
+  const o = s.obd, live = o?.status === "connected";
+  for (const el of $$(".quick-card .eng")) el.hidden = !live;
+  if (!live) return;
+  const v = o.v || {};
+  bind("eng-econ", o.mpg != null ? (settings.units === "imperial" ? String(o.mpg) : (235.21 / o.mpg).toFixed(1)) : "--");
+  bind("eng-econ-unit", settings.units === "imperial" ? "mpg" : "L/100km");
+  bind("eng-cool", v.coolant != null ? tempText(v.coolant) : "--");
+  bind("eng-fuel", v.fuel != null ? `${Math.round(v.fuel)}%` : "--");
+  bind("eng-volt", v.voltage != null ? v.voltage.toFixed(1) : "--");
+}
+
 // ---- live state ----
 let lastState = null;
 function onState(s) {
@@ -2631,6 +2706,8 @@ function onState(s) {
   updateWhere(p);
   checkQuakeAlerts(s);
   checkMesh(s);
+  checkAlerts(s);
+  paintEngineQuick(s);
   $("#st-net").setAttribute("class", "st " + (s.data === "offline" ? "off" : s.online ? (s.data === "saver" ? "warn" : "ok") : "off"));
   $("#st-net title").textContent = s.data === "offline" ? "Offline (Settings → Data use)" : !s.online ? "Offline: maps, routing, voice and music still work"
     : s.data === "saver" ? "Online, saving data" : "Online";
@@ -2876,6 +2953,25 @@ async function runCommand(raw, fromModel = false) {
   }
   if (/^(read|tell me|what'?s|give me)( me)? (the )?(news|headlines)|^(news|headlines)$/.test(text)) return readHeadlines();
   if (/engine (code|light|trouble)|check engine|trouble code|diagnos/.test(text)) return obdSay();
+  if (/oil change/.test(text)) {
+    await loadTrip();
+    const left = tripInfo?.oil_left_km;
+    const msg = left == null ? "Set the odometer in Settings first" : left > 0 ? `Oil change in ${distUnit(left, 0).replace("mi", "miles").replace("km", "kilometers")}` : "The oil change is due";
+    say(msg);
+    return msg;
+  }
+  if (/(gas|fuel) (mileage|economy)|my mileage|how many (mpg|miles per gallon)/.test(text)) {
+    await loadTrip();
+    const a = tripInfo?.trips.a, now = lastState?.obd?.mpg;
+    const msg = a?.mpg ? `This trip: ${econText(a.mpg)} over ${distUnit(a.km)}${now ? `; right now ${econText(now)}` : ""}` : "No fuel data yet: it needs the OBD adapter";
+    say(msg.replace(/mpg/g, "miles per gallon"));
+    return msg;
+  }
+  if (/^reset (the )?trip( a| b)?$/.test(text)) {
+    const which = /trip b$/.test(text) ? "b" : "a";
+    tripInfo = await api("/api/trip/reset", { json: { which } });
+    return `Trip ${which.toUpperCase()} reset`;
+  }
   if ((m = text.match(/^(?:send (?:a )?(?:mesh|lora) (?:message )?|tell the mesh |mesh message )(.+)$/))) { await meshSend(m[1]); return `Sent to the mesh: ${m[1]}`; }
   if (/^(read|any|check)( the| my)? (mesh|lora) (messages?)?/.test(text)) {
     await loadMesh();
@@ -2976,6 +3072,14 @@ const ACTIONS = {
   "np-add": () => { const t = curTrack(); if (t) openSaveSheet([media.idIndex.get(t.id)]); else toast("Nothing playing"); },
   "pl-close": () => ($("#pl-sheet").hidden = true),
   "news-refresh": () => loadNews(true),
+  "trip-reset": async (btn) => { if (!confirm(`Reset trip ${btn.dataset.trip.toUpperCase()}?`)) return; tripInfo = await api("/api/trip/reset", { json: { which: btn.dataset.trip } }); renderTrip(); },
+  "odo-set": () => { kbLayer = "num"; openSearch("", "odo"); },
+  "oil-done": async () => {
+    if (!confirm("Mark the oil as changed now?")) return;
+    tripInfo = await api("/api/trip/oil", { json: {} }).catch((e) => (toast(e.message), tripInfo));
+    paintTripSettings();
+    toast("Oil change recorded");
+  },
   "obd-cel": () => ($("#obd-codes").hidden ? showObdCodes(false) : ($("#obd-codes").hidden = true)),
   "obd-reread": () => showObdCodes(true),
   "obd-clear": obdClear,
@@ -3026,7 +3130,7 @@ const ACTIONS = {
 };
 document.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-action]");
-  if (btn && ACTIONS[btn.dataset.action]) ACTIONS[btn.dataset.action]();
+  if (btn && ACTIONS[btn.dataset.action]) ACTIONS[btn.dataset.action](btn);
   const view = e.target.closest(".rail-btn[data-view]");
   // Home again while on Home: hide or show the panel (full-screen map)
   if (view?.dataset.view === "home" && currentView === "home") setPanel(!document.body.classList.contains("panel-hidden"));

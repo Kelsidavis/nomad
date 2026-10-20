@@ -47,6 +47,7 @@ import network  # noqa: E402
 import music  # noqa: E402
 import news  # noqa: E402
 import obd  # noqa: E402
+import trip  # noqa: E402
 
 PORT = int(os.environ.get("HEADUNIT_PORT", 8800))
 BIND = os.environ.get("HEADUNIT_BIND", "127.0.0.1")
@@ -164,6 +165,7 @@ class State:
                 "system": self.system,
                 "obd": _obd_brief(),
                 "mesh": _mesh["brief"],
+                "alerts": trip.status()["alerts"],
             }
 
 
@@ -836,6 +838,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, mesh_call("/state"))
                 except (OSError, ValueError):
                     return self.send(200, {"status": "not running", "nodes": [], "messages": [], "channels": [], "prefs": {}})
+            if path == "/api/trip":  # odometer, trips A and B, oil change
+                return self.send(200, trip.status())
             if path == "/api/obd":  # everything from the OBD adapter, codes included
                 return self.send(200, obd.status())
             if path == "/api/news":  # ?feed=<url>: the cached headlines, newest first
@@ -925,6 +929,16 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, mesh_call(path[len("/api/mesh"):], self.body_json(), timeout=10))
                 except (OSError, ValueError) as e:
                     return self.send(400, {"error": str(e)[:160]})
+            if path == "/api/trip/reset":  # {which: a | b}
+                return self.send(200, trip.reset(self.body_json().get("which", "a")))
+            if path == "/api/trip/odometer":  # {km}
+                return self.send(200, trip.set_odometer(float(self.body_json()["km"])))
+            if path == "/api/trip/oil":  # {every_km?}: the oil was just changed (or only the interval, with set_only)
+                body = self.body_json()
+                try:
+                    return self.send(200, trip.oil_changed(body.get("every_km")))
+                except ValueError as e:
+                    return self.send(400, {"error": str(e)})
             if path == "/api/obd/codes":  # read the check-engine codes now
                 return self.send(200, obd.read_codes())
             if path == "/api/obd/clear":  # clear them (and the readiness monitors)
@@ -1122,7 +1136,8 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
                  lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here),
-                 lambda: radio.weather_loop(here), net_loop, news.news_loop, obd.obd_loop, mesh_loop):
+                 lambda: radio.weather_loop(here), net_loop, news.news_loop, obd.obd_loop, mesh_loop,
+                 lambda: trip.trip_loop(lambda: state.position(time.time()))):
         threading.Thread(target=loop, daemon=True).start()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True

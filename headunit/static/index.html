@@ -142,6 +142,10 @@
         <div><b data-bind="heading">--</b><span>heading</span></div>
         <div><b data-bind="altitude">--</b><span data-bind="alt-unit">ft</span></div>
         <div><b data-bind="sats">--</b><span>satellites</span></div>
+        <div class="eng" hidden><b data-bind="eng-econ">--</b><span data-bind="eng-econ-unit">mpg</span></div>
+        <div class="eng" hidden><b data-bind="eng-cool">--</b><span>coolant</span></div>
+        <div class="eng" hidden><b data-bind="eng-fuel">--</b><span>fuel</span></div>
+        <div class="eng" hidden><b data-bind="eng-volt">--</b><span>volts</span></div>
       </div>
     </div>
 
@@ -297,6 +301,7 @@
           <div class="gauge-label"><b id="sky-count">--</b> satellites</div>
         </div>
       </div>
+      <div class="card trip-card"><div class="eyebrow">Trip computer</div><div id="trip-kv"></div></div>
       <div class="kv" id="vehicle-kv"></div>
     </div>
 
@@ -336,6 +341,15 @@
         <span>Bluetooth<small id="bt-state">…</small></span>
         <div class="btn-row"><button class="btn primary" id="bt-pair" data-action="bt-pair">Pair a phone</button>
           <button class="btn" id="bt-forget" data-action="bt-forget" hidden>Forget</button></div>
+      </div>
+      <div class="setting">
+        <span>Odometer<small id="odo-state">…</small></span>
+        <button class="btn" data-action="odo-set">Set</button>
+      </div>
+      <div class="setting stack">
+        <div class="setting-row"><span>Oil change<small id="oil-state">…</small></span>
+          <button class="btn" data-action="oil-done">Oil changed</button></div>
+        <div class="seg" id="oil-seg"><button data-v="3000">3,000 mi</button><button data-v="5000">5,000</button><button data-v="7500">7,500</button><button data-v="10000">10,000</button></div>
       </div>
       <div class="setting">
         <span>Home<small id="home-addr">Not set</small></span>
