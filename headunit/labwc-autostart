@@ -1,0 +1,5 @@
+# NOMAD session (~/.config/labwc/autostart, installed by setup-pi.sh): just the display setup, a black background
+# and the head unit; no desktop, panel or file manager. The stock one is /etc/xdg/labwc/autostart.
+/usr/bin/kanshi &
+/usr/bin/swaybg -c '#000000' &
+/opt/headunit/headunit-kiosk.sh &

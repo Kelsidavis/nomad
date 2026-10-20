@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=NOMAD
+Description=NOMAD head unit boot screen
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/nomad
+ScriptFile=/usr/share/plymouth/themes/nomad/nomad.script

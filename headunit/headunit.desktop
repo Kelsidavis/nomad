@@ -1,6 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Head Unit
-Comment=Full-screen car head unit UI
-Exec=/opt/headunit/headunit-kiosk.sh
-X-GNOME-Autostart-enabled=true

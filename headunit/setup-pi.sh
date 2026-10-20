@@ -76,7 +76,7 @@ if [ ! -s "$H/models/kokoro/voices-v1.0.bin" ]; then
 fi
 for s in stt tts; do sed "s#/home/k/#$H/#g; s/^User=k$/User=$U/" "$REPO"/headunit/$s.service > /etc/systemd/system/$s.service; done
 install -o "$U" -g "$U" -d "$H/.config/autostart" "$H/.local/share/headunit"
-install -o "$U" -g "$U" -m 644 "$REPO"/headunit/headunit.desktop "$H/.config/autostart/headunit.desktop"
+rm -f "$H/.config/autostart/headunit.desktop"  # the NOMAD session's labwc autostart starts the kiosk now
 
 echo "== offline routing image (Valhalla)"
 docker image inspect ghcr.io/valhalla/valhalla:3.9.1 >/dev/null 2>&1 || docker pull -q ghcr.io/valhalla/valhalla:3.9.1
@@ -89,6 +89,20 @@ polkit.addRule(function (action, subject) {
   if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0 && subject.isInGroup("netdev")) return polkit.Result.YES;
 });
 EOT
+
+echo "== boot screen and no desktop: the NOMAD splash, quiet boot, and a session that is just the head unit"
+mkdir -p /usr/share/plymouth/themes/nomad && cp "$REPO"/headunit/boot/nomad/* /usr/share/plymouth/themes/nomad/
+grep -q '^disable_splash=1' "$C" || printf '\n[all]\n# NOMAD: no rainbow square at power-on\ndisable_splash=1\n' >> "$C"
+L=/boot/firmware/cmdline.txt
+c=$(cat "$L"); for opt in quiet splash loglevel=3 logo.nologo vt.global_cursor_default=0; do
+    case " $c " in *" $opt "*) ;; *) c="$c $opt";; esac; done; echo "$c" > "$L"
+plymouth-set-default-theme -R nomad >/dev/null 2>&1 || true
+install -m 755 "$REPO"/headunit/boot/nomad-session /usr/local/bin/nomad-session
+install -m 644 "$REPO"/headunit/boot/nomad.desktop /usr/share/wayland-sessions/nomad.desktop
+install -o "$U" -g "$U" -d "$H/.config/labwc"
+[ -f "$H/.config/labwc/rc.xml" ] || install -o "$U" -g "$U" -m 644 /etc/xdg/labwc/rc.xml "$H/.config/labwc/rc.xml" 2>/dev/null || true
+install -o "$U" -g "$U" -m 644 "$REPO"/headunit/labwc-autostart "$H/.config/labwc/autostart"
+sed -i "s/^#\?autologin-user=.*/autologin-user=$U/; s/^#\?autologin-session=.*/autologin-session=nomad/; s/^#\?user-session=.*/user-session=nomad/" /etc/lightdm/lightdm.conf
 
 echo "== faster boot"
 # Nothing here needs the internet, and in the car there is usually no Wi-Fi: waiting for it held up Docker

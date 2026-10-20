@@ -1,0 +1,10 @@
+#!/bin/sh
+# NOMAD's Wayland session: labwc reading only ~/.config/labwc (the stock labwc-pi merges in the desktop's panel and
+# file manager with -m). Its autostart starts the head unit. To get the Raspberry Pi desktop back:
+#   sudo sed -i 's/=nomad$/=rpd-labwc/' /etc/lightdm/lightdm.conf && sudo systemctl restart lightdm
+. /usr/bin/setup_env
+if raspi-config nonint is_pi; then
+    export WLR_DRM_FORCE_LIBLIFTOFF=1
+    raspi-config nonint gpu_has_mmu || export WLR_RENDERER=pixman
+fi
+exec /usr/bin/labwc "$@"

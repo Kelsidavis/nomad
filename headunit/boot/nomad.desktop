@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=NOMAD
+Comment=The head unit, full screen, with no desktop
+Exec=/usr/local/bin/nomad-session
+Type=Application
+DesktopNames=labwc;wlroots
