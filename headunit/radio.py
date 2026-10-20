@@ -4,6 +4,7 @@ The SDR is a Nooelec NESDR SMArt v5 (RTL2832U + R820T2; AM through direct sampli
 rtl_fm -> ffmpeg -> MP3 and server.py streams that to the page's <audio>, so radio goes through the same player,
 volume and visualizer as music. One stream at a time: the dongle has one tuner.
 """
+import calendar
 import json
 import os
 import re
@@ -205,11 +206,17 @@ def tle_age_days():
 WX_CACHE = pathlib.Path(os.environ.get("HEADUNIT_CACHE", pathlib.Path.home() / ".cache/headunit")) / "wx"
 RADAR = ("https://mapservices.weather.noaa.gov/eventdriven/rest/services/radar/radar_base_reflectivity/MapServer/export"
          "?bbox={},{},{},{}&bboxSR=3857&imageSR=3857&size=256,256&format=png32&transparent=true&f=image")
-GOES = {  # NOAA STAR's latest GOES-18 (West) images
-    "pnw": "https://cdn.star.nesdis.noaa.gov/GOES18/ABI/SECTOR/pnw/GEOCOLOR/1200x1200.jpg",
-    "pnw-ir": "https://cdn.star.nesdis.noaa.gov/GOES18/ABI/SECTOR/pnw/13/1200x1200.jpg",
-    "west": "https://cdn.star.nesdis.noaa.gov/GOES18/ABI/CONUS/GEOCOLOR/1250x750.jpg",
+STAR = "https://cdn.star.nesdis.noaa.gov"
+# NOAA STAR's GOES images: the latest at full size, and the folder of timestamped frames (a frame every 5 minutes
+# for sectors, 10 for full disk) that the animations are built from, at a smaller size.
+GOES = {
+    "pnw": {"dir": "GOES18/ABI/SECTOR/pnw/GEOCOLOR", "latest": "1200x1200.jpg", "frame": "600x600.jpg", "keep": 24},
+    "pnw-ir": {"dir": "GOES18/ABI/SECTOR/pnw/13", "latest": "1200x1200.jpg", "frame": "600x600.jpg", "keep": 24},
+    "west": {"dir": "GOES18/ABI/CONUS/GEOCOLOR", "latest": "1250x750.jpg", "frame": "625x375.jpg", "keep": 24},
+    "fd": {"dir": "GOES18/ABI/FD/GEOCOLOR", "latest": "1808x1808.jpg", "frame": "678x678.jpg", "keep": 24},
+    "fd-east": {"dir": "GOES19/ABI/FD/GEOCOLOR", "latest": "1808x1808.jpg", "frame": "678x678.jpg", "keep": 24},
 }
+FRAME_NAME = re.compile(r'href="(\d{11})_[^"]+-(\d+x\d+\.jpg)"')  # 20262930951_GOES18-ABI-pnw-GEOCOLOR-600x600.jpg
 EMPTY_PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b494441"
                           "54789c6360000200000500017a5eab3f0000000049454e44ae426082")  # 1x1, transparent
 
@@ -247,10 +254,49 @@ def radar_tile(z, x, y):
 
 
 def goes_image(view):
-    """(jpeg, age in seconds) of the latest GOES-18 image for a view in GOES, or None."""
+    """(jpeg, age in seconds) of the latest GOES image for a view in GOES, or None."""
     if view not in GOES:
         raise ValueError(f"view must be one of {', '.join(GOES)}")
-    return _cached(WX_CACHE / f"goes-{view}.jpg", GOES[view], 600)
+    v = GOES[view]
+    return _cached(WX_CACHE / f"goes-{view}.jpg", f"{STAR}/{v['dir']}/{v['latest']}", 600)
+
+
+def update_animation(view):
+    """Download the newest frames of a view (what's not here yet) and drop the ones beyond the last v["keep"]."""
+    v = GOES[view]
+    folder = WX_CACHE / "anim" / view
+    req = urllib.request.Request(f"{STAR}/{v['dir']}/", headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        listing = r.read().decode(errors="replace")
+    stamps = sorted({m.group(1) for m in FRAME_NAME.finditer(listing) if m.group(2) == v["frame"]})[-v["keep"]:]
+    folder.mkdir(parents=True, exist_ok=True)
+    have = {f.stem for f in folder.glob("*.jpg")}
+    for stamp in stamps:
+        if stamp in have:
+            continue
+        name = next(m.group(0)[6:-1] for m in FRAME_NAME.finditer(listing) if m.group(1) == stamp and m.group(2) == v["frame"])
+        _cached(folder / f"{stamp}.jpg", f"{STAR}/{v['dir']}/{name}", 10 ** 9)
+    for f in folder.glob("*.jpg"):
+        if f.stem not in stamps:
+            f.unlink(missing_ok=True)
+
+
+def goes_frames(view):
+    """The animation frames on hand, oldest first: [{"stamp", "t"}] (t: Unix time, from the UTC stamp YYYYDDDHHMM)."""
+    if view not in GOES:
+        raise ValueError(f"view must be one of {', '.join(GOES)}")
+    out = []
+    for f in sorted((WX_CACHE / "anim" / view).glob("*.jpg")):
+        s = f.stem
+        t = calendar.timegm(time.strptime(s, "%Y%j%H%M"))
+        out.append({"stamp": s, "t": t})
+    return out
+
+
+def goes_frame(view, stamp):
+    if view not in GOES or not re.fullmatch(r"\d{11}", stamp or ""):
+        raise ValueError("bad frame")
+    return WX_CACHE / "anim" / view / f"{stamp}.jpg"
 
 
 def _nws(url):
@@ -467,3 +513,21 @@ def capture_loop(where):
         except Exception as e:  # noqa: BLE001 - keep the scheduler alive whatever one pass does
             print(f"capture loop: {e}")
         time.sleep(20)
+
+
+def weather_loop(where):
+    """Keep the weather ready for when there's no signal: every 10 minutes, the GOES-18 pictures, the forecast and
+    alerts (for where() = (lat, lon)) and the satellite orbits, whenever there's a connection. Each fetch is skipped
+    while its copy is still fresh, and a failure (offline) just leaves the last copy."""
+    while True:
+        for view in GOES:
+            goes_image(view)
+            try:
+                update_animation(view)
+            except (OSError, ValueError, StopIteration):
+                pass  # offline: the frames on hand still play
+        loc = where()
+        if loc:
+            forecast(*loc)
+        refresh_tle()
+        time.sleep(600)

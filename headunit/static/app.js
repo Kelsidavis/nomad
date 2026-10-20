@@ -1796,12 +1796,40 @@ function dopplerNow(p, now) {  // straight lines between the shifts at rise, pea
 }
 
 // GOES-18 (NOAA's western weather satellite): the latest picture, cached on the Pi for when there's no internet.
-const GOES_VIEWS = { pnw: "Northwest", "pnw-ir": "Infrared", west: "West US" };
+const GOES_VIEWS = { pnw: "Northwest", "pnw-ir": "Infrared", west: "West US", fd: "Earth (West)", "fd-east": "Earth (East)" };
+// Animation: the frames the Pi keeps (radio.py update_animation), played on a loop with a pause on the newest.
+const goesAnim = { timer: null, frames: [], i: 0, imgs: [] };
+function stopGoesAnim() {
+  clearInterval(goesAnim.timer);
+  goesAnim.timer = null;
+  $(".goes-play")?.classList.remove("on");
+}
+async function toggleGoesAnim() {
+  if (goesAnim.timer) return stopGoesAnim();
+  const view = radio.goesView, img = $(".goes-pic img"), age = $(".goes-age");
+  const { frames } = await api(`/api/wx/goes/frames?view=${view}`).catch(() => ({ frames: [] }));
+  if (frames.length < 2) return toast("No animation frames yet: they build up over the next hour online", 2600);
+  goesAnim.frames = frames;
+  goesAnim.imgs = frames.map((f) => Object.assign(new Image(), { src: `/api/wx/goes/frame?view=${view}&stamp=${f.stamp}` }));
+  goesAnim.i = 0;
+  $(".goes-play").classList.add("on");
+  let hold = 0;
+  goesAnim.timer = setInterval(() => {
+    if (radio.goesView !== view || !img.isConnected) return stopGoesAnim();
+    if (goesAnim.i === frames.length - 1 && hold++ < 6) return;  // linger on the newest frame
+    hold = 0;
+    goesAnim.i = (goesAnim.i + 1) % frames.length;
+    img.src = goesAnim.imgs[goesAnim.i].src;
+    age.textContent = `${fmtClock(new Date(frames[goesAnim.i].t * 1000), true)} · ${goesAnim.i + 1}/${frames.length}`;
+  }, 220);
+}
 function goesCard() {
   const d = document.createElement("div");
   d.className = "goes-card";
   radio.goesView ||= new Date().getHours() >= 7 && new Date().getHours() < 19 ? "pnw" : "pnw-ir";  // GeoColor by day
-  d.innerHTML = `<div class="goes-pic" data-action="goes-view"><img alt=""><span class="goes-age"></span></div>
+  stopGoesAnim();
+  d.innerHTML = `<div class="goes-pic" data-action="goes-view"><img alt=""><span class="goes-age"></span>
+      <button class="goes-play" data-action="goes-anim" aria-label="Animate"><svg><use href="#i-play"/></svg></button></div>
     <div class="seg">${Object.entries(GOES_VIEWS).map(([v, t]) => `<button data-v="${v}" class="${v === radio.goesView ? "on" : ""}">${t}</button>`).join("")}</div>`;
   const img = d.querySelector("img"), age = d.querySelector(".goes-age");
   fetch(`/api/wx/goes?view=${radio.goesView}`).then(async (r) => {
@@ -2368,6 +2396,7 @@ const ACTIONS = {
   radar: () => setRadar(!radarOn),
   layers: () => { $("#layers-menu").hidden = !$("#layers-menu").hidden; paintLayers(); },
   "goes-view": () => openGoes(radio.goesView),
+  "goes-anim": toggleGoesAnim,
   "clear-recents": () => { save("recents", []); renderRecents(); toast("Recent places cleared"); },
   reload: () => location.reload(),
 };

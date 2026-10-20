@@ -685,7 +685,11 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/wx/radar/"):  # /wx/radar/z/x/y.png
                 z, x, y = (int(v) for v in path[len("/wx/radar/"):].removesuffix(".png").split("/"))
                 return self.send(200, radio.radar_tile(z, x, y), "image/png", "max-age=240")
-            if path == "/api/wx/goes":  # ?view=pnw|pnw-ir|west
+            if path == "/api/wx/goes/frames":  # ?view=: the animation frames on hand
+                return self.send(200, {"frames": radio.goes_frames(q.get("view", "pnw"))})
+            if path == "/api/wx/goes/frame":  # ?view=&stamp=
+                return self.file(radio.goes_frame(q.get("view", "pnw"), q.get("stamp")), "max-age=86400")
+            if path == "/api/wx/goes":  # ?view=pnw|pnw-ir|west|fd|fd-east
                 got = radio.goes_image(q.get("view", "pnw"))
                 if not got:
                     return self.send(503, {"error": "no GOES image yet (needs internet once)"})
@@ -970,7 +974,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
-                 lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here)):
+                 lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here),
+                 lambda: radio.weather_loop(here)):
         threading.Thread(target=loop, daemon=True).start()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True

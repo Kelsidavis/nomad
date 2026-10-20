@@ -478,7 +478,11 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 .goes-pic img { max-width: 100%; max-height: 46vh; object-fit: contain; display: block; }  /* the whole picture, square or wide */
 .goes-age { position: absolute; left: 0.6rem; bottom: 0.5rem; padding: 0.15rem 0.5rem; border-radius: 0.5rem; background: rgb(0 0 0 / 0.55);
   color: #fff; font-size: 0.8rem; }
-.goes-card .seg button { flex: 1; min-height: 2.4rem; }
+.goes-card .seg button { flex: 1; min-height: 2.4rem; padding: 0 0.5rem; font-size: 0.85rem; }
+.goes-play { position: absolute; right: 0.6rem; bottom: 0.5rem; width: 2.8rem; height: 2.8rem; border-radius: 50%; display: grid;
+  place-items: center; background: rgb(0 0 0 / 0.55); color: #fff; }
+.goes-play svg { width: 1.4rem; height: 1.4rem; fill: currentColor; }
+.goes-play.on { background: var(--accent); color: var(--accent-text); }
 
 /* home and the mute button */
 .recent.home svg { color: var(--accent); }
