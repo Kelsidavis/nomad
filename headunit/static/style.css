@@ -360,7 +360,7 @@ body.panel-hidden .map-chip { left: 3rem; }
   place-items: center; color: var(--text-2); z-index: 1; }
 .fold-btn svg { width: 1.3rem; height: 1.3rem; transform: rotate(90deg); transition: transform 0.2s; }
 .folded .fold-btn svg { transform: rotate(-90deg); }
-.nav-card .search-bar { width: calc(100% - 2.6rem); }
+.nav-card .search-bar { width: calc(100% - 5.2rem); }  /* room for the emergency and fold buttons */
 .nav-card.folded .recents { display: none; }
 .media-card, .quick-card { padding-right: 2.9rem; }
 .media-card.folded { grid-template-columns: auto 1fr auto; grid-template-rows: auto; }
@@ -527,10 +527,11 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 #search-overlay[data-mode="chat"] #search-text:empty::before { content: "Ask anything"; }
 
 /* emergency */
-.em-btn { display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; min-height: 2.8rem; margin-top: 0.5rem;
-  border-radius: 1.4rem; background: color-mix(in srgb, var(--bad) 18%, var(--card-2)); color: var(--bad); font-weight: 700; }
-.em-btn svg { width: 1.2rem; height: 1.2rem; fill: currentColor; }
-.nav-card.folded .em-btn { display: flex; }
+/* a small icon beside the fold chevron, out of the way */
+.em-btn { position: absolute; top: 0.45rem; right: 2.9rem; width: 2.4rem; height: 2.4rem; border-radius: 50%; display: grid;
+  place-items: center; color: var(--bad); opacity: 0.75; z-index: 1; }
+.em-btn:active { opacity: 1; }
+.em-btn svg { width: 1.15rem; height: 1.15rem; fill: currentColor; }
 .em-banner { padding: 0.9rem 1rem; font-weight: 700; font-size: 1.05rem; flex: none; line-height: 1.35; }
 .em-banner.danger { background: var(--bad); color: #fff; }
 .em-banner.ok { background: color-mix(in srgb, var(--good) 22%, transparent); }
