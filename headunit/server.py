@@ -781,12 +781,15 @@ class Handler(BaseHTTPRequestHandler):
     def send(self, code, body, ctype="application/json", cache=None):
         if isinstance(body, (dict, list)):
             body = json.dumps(body).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", cache or "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", cache or "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True  # the page went away (reload, a cancelled fetch): nothing to tell it
 
     def body_json(self):
         n = int(self.headers.get("Content-Length") or 0)
