@@ -3320,10 +3320,28 @@ const keywordRe = (name) => {
 };
 let KEYWORD = keywordRe(NAME);
 api("/api/config").then((c) => { NAME = c.name || NAME; KEYWORD = keywordRe(NAME); }).catch(() => {});
-async function handleUtterance(raw) {
+// whisper often hears the name a letter off ("track", "tuck", "truk"): a first word within one edit of it counts
+function oneOff(a, b) {
+  if (Math.abs(a.length - b.length) > 1 || a === b) return a === b;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+function keywordMatch(raw) {
   const m = raw.match(KEYWORD);
-  if (!m) return chat(raw);
-  const rest = raw.slice(m[0].length).trim();
+  if (m) return m[0].length;
+  const w = raw.match(/^\W*(?:hey,? )?([a-z]+)[\s,.:;!-]+/i);
+  const name = NAME.toLowerCase();
+  return w && name.length >= 4 && oneOff(w[1].toLowerCase(), name) ? w[0].length : -1;
+}
+async function handleUtterance(raw) {
+  const at = keywordMatch(raw);
+  if (at < 0) return chat(raw);
+  const rest = raw.slice(at).trim();
   if (!rest) return `Say “${NAME.toLowerCase()}” and then the command`;
   return runCommand(rest);
 }

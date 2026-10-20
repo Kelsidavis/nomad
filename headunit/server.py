@@ -1146,7 +1146,8 @@ class Handler(BaseHTTPRequestHandler):
                 return phase("done", ok=True, text="", heard=False)
             phase("heard")
             t = time.time()
-            result = transcribe(voice.to_wav(pcm), prompt=f"{config.NAME}, navigate to, play, pause, next, zoom, dashcam.")
+            result = transcribe(voice.to_wav(pcm), prompt=f"{config.NAME}, navigate to, play, pause, next, zoom, remind me, timer, gas on the way, "
+                                                                     f"more like this, speed limit, engine codes, mesh.")
             result.update(round_trip_s=round(time.time() - t, 2), audio_s=round(len(pcm) / 2 / voice.RATE, 2), heard=True)
             phase("done", **result)
         except OSError:
