@@ -300,9 +300,9 @@ def goes_frame(view, stamp):
     return WX_CACHE / "anim" / view / f"{stamp}.jpg"
 
 
-def _nws(url):
+def _nws(url, timeout=15):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/geo+json"})
-    with urllib.request.urlopen(req, timeout=15) as r:
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.load(r)
 
 
@@ -341,7 +341,7 @@ def _alerts_at(lat, lon):
     hit = _route_cache.get(key)
     if hit and time.time() - hit[0] < 900:
         return hit[1]
-    feats = _nws(f"https://api.weather.gov/alerts/active?point={lat:.3f},{lon:.3f}")["features"]
+    feats = _nws(f"https://api.weather.gov/alerts/active?point={lat:.3f},{lon:.3f}", timeout=8)["features"]
     out = [{"id": f["properties"].get("id") or f.get("id"), "event": f["properties"].get("event"),
             "headline": f["properties"].get("headline"), "severity": f["properties"].get("severity"),
             "area": f["properties"].get("areaDesc"), "ends": f["properties"].get("ends") or f["properties"].get("expires")}
@@ -354,8 +354,8 @@ def _arrival(lat, lon, arrive_ts):
     """The hourly forecast at (lat, lon) for the hour of arrive_ts, or None."""
     from datetime import datetime
     try:
-        point = _nws(f"https://api.weather.gov/points/{lat:.4f},{lon:.4f}")["properties"]
-        for per in _nws(point["forecastHourly"])["properties"]["periods"][:48]:
+        point = _nws(f"https://api.weather.gov/points/{lat:.4f},{lon:.4f}", timeout=8)["properties"]
+        for per in _nws(point["forecastHourly"], timeout=8)["properties"]["periods"][:48]:
             start = datetime.fromisoformat(per["startTime"]).timestamp()
             end = datetime.fromisoformat(per["endTime"]).timestamp()
             if start <= arrive_ts < end or start > arrive_ts:
