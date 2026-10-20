@@ -2349,7 +2349,12 @@ const ACTIONS = {
   "chat-stop": () => chatLog.busy?.abort(),
   "chat-think": () => { chatLog.think = !chatLog.think; save("chatThink", chatLog.think); renderChat(); },
   "chat-speak": () => { chatLog.speak = !chatLog.speak; save("chatSpeak", chatLog.speak); renderChat(); },
-  "chat-clear": () => { if (!chatLog.busy) { chatLog.msgs = []; save("chatLog", []); renderChat(); } },
+  "chat-clear": () => {  // stops an answer in progress too
+    chatLog.busy?.abort();
+    chatLog.msgs = [];
+    save("chatLog", []);
+    renderChat();
+  },
   "viz-cycle": cycleViz,
   "np-open": openNowPlaying,
   "np-close": () => ($("#np-full").hidden = true),
