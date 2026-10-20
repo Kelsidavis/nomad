@@ -10,11 +10,13 @@ Pi itself and keep working with no signal; it goes online only for what it doesn
 | **Map layers** | Satellite, NEXRAD weather radar, shaded relief, elevation colors, contours (ft/m), 3D terrain |
 | **Voice** | Push the mic: whisper.cpp speech-to-text, a fixed command grammar plus Gemma 4 E2B for anything else ("Truck, I need gas"), conversation without the keyword, all spoken back in Kokoro's Bella or Sky voice |
 | **Assistant** | A chat tab with Gemma 4 E2B, its reasoning streamed live as it thinks |
-| **Media** | A 25,000-track library (artists, albums, songs, search, album art), spectrum visualizers, full-screen now playing, video; `tools/plex_music.py` copies a Plex library and converts lossless to Opus |
+| **Media** | A 25,000-track library (artists, albums, songs, search, album art), browse by mood, style, genre and decade (Plex's tags), mixes from a described vibe ("chill night drive", "something like Blink-182"; the voice model picks the tags), playlists, spectrum visualizers, full-screen now playing, video; `tools/plex_music.py` copies a Plex library and converts lossless to Opus |
 | **Radio (SDR)** | FM/AM with band scan, NOAA weather radio, an EMS/fire/marine/air/ham scanner, satellite pass predictions with Doppler-corrected tuning, and automatic capture: Meteor-M2 weather images (SatDump) and ISS SSTV pictures |
 | **Weather** | NWS forecast and alerts, GOES-18 satellite pictures, radar on the map; cached for when you're offline |
+| **News** | RSS and Atom headlines (NPR, BBC, Guardian, Ars Technica to start; add any feed), downloaded in the background and kept for offline; "Truck, read the news" |
 | **Emergency** | Tsunami evacuation zones, routes and assembly areas (WA, OR; offline) with "am I in a zone?", one-tap routes to high ground, open FEMA shelters, Red Cross, community centers, hospitals and fire stations nearby, USGS earthquakes on the map with spoken alerts; "Truck, evacuate" |
 | **Vehicle** | GPS (gpsd), satellite sky plot, g-meter, compass, Pi power and temperature |
+| **Boot** | NOMAD splash screen, quiet boot, and a session that is only the head unit: no desktop, panel or file manager |
 | **Look** | Android Auto-style layout from 800x480 up to 1080p, collapsible panels, dark/light by sunrise, accent color from the album art |
 
 Everything is plain and hackable: a Python standard-library server (`headunit/server.py`) and one web page
@@ -86,6 +88,7 @@ connection. `HEADUNIT_OFFLINE=1` turns the fallbacks off, to check the offline d
 | `HEADUNIT_HOME` | `lat,lon` for weather and satellite passes before there's a GPS fix or a home set in Settings |
 | `GPS_SERIAL` | the GPS bridge's serial for its udev rule; empty = whichever CP210x is plugged in at setup |
 | `PLEX_*`, `MUSIC_OUT` | defaults for `tools/plex_music.py` |
+| `NEWS_FEEDS` | the starting feed list, `Name|url, Name|url` (after that, edit it on the News screen) |
 
 Everything else is in the Settings screen: units, theme, accent color, voice, visualizer, home, Wi-Fi networks,
 data use (Auto saves data on a metered connection like a phone hotspot; Offline never goes online), phone

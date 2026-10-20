@@ -1,6 +1,6 @@
 #!/bin/sh
-# Shows the head unit full-screen once the backend answers. Started from the desktop session
-# (~/.config/autostart/headunit.desktop). If Chromium crashes it comes back by itself; closing it on purpose
+# Shows the head unit full-screen once the backend answers. Started by the NOMAD session
+# (~/.config/labwc/autostart). Extra arguments go to Chromium. If Chromium crashes it comes back by itself; closing it on purpose
 # (Alt+F4) ends the kiosk. To stop it from a shell: pkill -f headunit-kiosk; pkill -f headunit-chromium
 URL=${HEADUNIT_URL:-http://127.0.0.1:8800/}
 

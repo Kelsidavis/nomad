@@ -45,6 +45,7 @@ import bt  # noqa: E402
 import emergency  # noqa: E402
 import network  # noqa: E402
 import music  # noqa: E402
+import news  # noqa: E402
 
 PORT = int(os.environ.get("HEADUNIT_PORT", 8800))
 BIND = os.environ.get("HEADUNIT_BIND", "127.0.0.1")
@@ -789,6 +790,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {"tracks": music.tag_tracks(lib["tracks"], lib["tags"], q["kind"], q["tag"])})
             if path == "/api/playlists":
                 return self.send(200, {"playlists": music.playlists()})
+            if path == "/api/news":  # ?feed=<url>: the cached headlines, newest first
+                return self.send(200, news.headlines(q.get("feed")))
             if path == "/api/media/file":
                 return self.file(media_path(q["id"]))
             if path == "/api/media/art":
@@ -869,6 +872,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, network.connect(body["ssid"], body.get("password") or None))
             if path == "/api/wifi/forget":  # {ssid}
                 return self.send(200, network.forget(self.body_json()["ssid"]))
+            if path == "/api/news/refresh":
+                if not network.allowed("ask"):
+                    return self.send(200, {**news.headlines(), "note": "Offline (Settings → Data use): the last headlines"})
+                news.refresh(force=True)
+                return self.send(200, news.headlines())
+            if path == "/api/news/add":  # {url, name?}
+                body = self.body_json()
+                try:
+                    return self.send(200, {"feeds": news.add_feed(body["url"], body.get("name"))})
+                except (OSError, ValueError) as e:
+                    return self.send(400, {"error": str(e)[:160]})
+            if path == "/api/news/remove":  # {url}
+                return self.send(200, {"feeds": news.remove_feed(self.body_json()["url"])})
             if path == "/api/data":  # {mode: auto | normal | saver | offline}
                 return self.send(200, network.set_data_use(self.body_json().get("mode")))
             if path == "/api/bt/pair":
@@ -1044,7 +1060,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
                  lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here),
-                 lambda: radio.weather_loop(here), net_loop):
+                 lambda: radio.weather_loop(here), net_loop, news.news_loop):
         threading.Thread(target=loop, daemon=True).start()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True

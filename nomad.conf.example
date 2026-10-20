@@ -19,3 +19,6 @@ PLEX_SERVER=http://plex.local:32400
 PLEX_SECTION=
 PLEX_TOKEN_FILE=~/.config/nomad/plex.token
 MUSIC_OUT=~/CarMusic
+
+# News screen's starting feeds (Name|url, comma separated); edit them on the screen after that
+#NEWS_FEEDS=NPR|https://feeds.npr.org/1001/rss.xml, BBC World|https://feeds.bbci.co.uk/news/world/rss.xml

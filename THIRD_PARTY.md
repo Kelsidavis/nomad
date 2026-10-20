@@ -39,3 +39,7 @@ NOMAD's own code is GPL-3.0-or-later ([LICENSE](LICENSE)). These keep their own 
 | FEMA National Shelter System (open shelters), USGS earthquake feed | shelters, earthquakes | public domain (US Government) |
 | CelesTrak | satellite orbits | free; please don't poll more than needed (NOMAD refreshes every two days) |
 | Photon (Komoot), Nominatim, OSRM demo server | online fallbacks only | each service's usage policy; not for bulk use |
+
+## News feeds (default list)
+
+Headlines come from the publishers' public RSS feeds (NPR, BBC, The Guardian, Ars Technica) and stay their property; NOMAD shows titles and summaries and links back.

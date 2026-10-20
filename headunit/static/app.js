@@ -194,6 +194,7 @@ function showView(name) {
   if (name === "assistant") renderChat();
   if (name === "settings") { paintBt(); paintWifi(); }
   if (name === "emergency") loadEmergency();
+  if (name === "news") loadNews();
   renderNav();
 }
 
@@ -718,6 +719,7 @@ function openSearch(text = "", mode = "places") {
   if (mode === "music") return loadMedia().then(() => showMusicSearch(query));
   if (mode === "pass") { showTyped(); return ($("#search-results").innerHTML = `<div class="empty">Password for “${escapeHtml(wifiTarget)}”, then Join.</div>`); }
   if (mode === "vibe") return ($("#search-results").innerHTML = `<div class="empty">Describe it: “chill night drive”, “90s singalong”, “something like Fleetwood Mac”…</div>`);
+  if (mode === "feed") return ($("#search-results").innerHTML = `<div class="empty">The feed's address, like npr.org/rss, then Add.</div>`);
   if (mode === "plname") return ($("#search-results").innerHTML = `<div class="empty">Name the playlist, then Save.</div>`);
   if (mode === "chat") return ($("#search-results").innerHTML = `<div class="empty">Type a question, then tap Send.</div>`);
   if (mode === "freq") return ($("#search-results").innerHTML = `<div class="empty">Type a frequency: 98.5 (FM), 1190 (AM, in kHz), 155.34 or 162.55 (narrow FM).</div>`);
@@ -735,7 +737,7 @@ function renderKeyboard() {
     }
     return `<div class="kb-row">${keys.join("")}</div>`;
   });
-  const go = { chat: "Send", pass: "Join", vibe: "Mix", plname: "Save" }[searchMode] || "Search";
+  const go = { chat: "Send", pass: "Join", vibe: "Mix", plname: "Save", feed: "Add" }[searchMode] || "Search";
   rows.push(`<div class="kb-row"><button class="key wide" data-k="layer">${letters ? "123" : "ABC"}</button>
     <button class="key space" data-k=" ">space</button><button class="key wide go" data-k="go">${go}</button></div>`);
   kb.innerHTML = rows.join("");
@@ -784,6 +786,7 @@ async function runSearch() {
   if (searchMode === "chat") { closeSearch(); return askAssistant(q); }
   if (searchMode === "pass") { closeSearch(); return wifiJoin(wifiTarget, query); }
   if (searchMode === "vibe") { closeSearch(); return q && makeVibe(q); }
+  if (searchMode === "feed") { closeSearch(); return q && addFeed(q); }
   if (searchMode === "plname") { closeSearch(); return createPlaylist(q); }
   if (!q) return;
   const box = $("#search-results");
@@ -2155,6 +2158,89 @@ $("#radio-tabs").addEventListener("click", (e) => {
 // "in 12 min" counts down, and a capture's progress shows up
 setInterval(() => { if (currentView === "radio" && radio.tab === "sats") loadRadio(true); }, 30000);
 
+
+// ---- news: RSS and Atom headlines (news.py), cached for when there's no signal ----
+const news = { data: null, feed: load("newsFeed", ""), open: null, manage: false };
+async function loadNews(refresh) {
+  renderNews();
+  try {
+    news.data = refresh ? await api("/api/news/refresh", { json: {} }) : await api("/api/news");
+    if (news.data.note) toast(news.data.note);
+  } catch (e) { if (!news.data) news.data = { error: e.message }; }
+  if (currentView === "news") renderNews();
+}
+function agoText(t) {
+  const m = Math.round((Date.now() / 1000 - t) / 60);
+  return !t ? "" : m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+}
+function renderNews() {
+  const d = news.data, box = $("#news-list");
+  const chips = $("#news-feeds");
+  if (!d) return (box.innerHTML = `<div class="empty">Loading…</div>`);
+  if (d.error) return (box.innerHTML = `<div class="empty">${escapeHtml(d.error)}</div>`);
+  chips.replaceChildren(...[{ name: "All", url: "" }, ...d.feeds].map((f) => {
+    const b = document.createElement("button");
+    b.textContent = f.name;
+    b.classList.toggle("on", news.feed === f.url);
+    b.onclick = () => { news.feed = f.url; save("newsFeed", f.url); news.open = null; renderNews(); };
+    return b;
+  }));
+  if (news.manage) return renderNewsFeeds();
+  const items = d.items.filter((i) => !news.feed || d.feeds.find((f) => f.url === news.feed)?.name === i.feed);
+  $("#news-updated").textContent = d.updated ? `Updated ${agoText(d.updated)}` : "";
+  if (!items.length) {
+    return (box.innerHTML = `<div class="empty">${d.feeds.length ? "No headlines yet: they download when there's a connection (Settings → Data use)." : "No feeds. Tap Feeds to add one."}</div>`);
+  }
+  box.replaceChildren(...items.map((it) => {
+    const b = document.createElement("div");
+    b.className = "news-item" + (news.open === it.link + it.title ? " open" : "");
+    b.innerHTML = `<button class="news-head"><span class="t"></span><span class="s"></span></button>
+      <div class="news-body"><p></p><div class="news-acts"><button class="btn"><svg><use href="#i-chat"/></svg>Read aloud</button></div></div>`;
+    b.querySelector(".t").textContent = it.title;
+    b.querySelector(".s").textContent = [it.feed, agoText(it.t)].filter(Boolean).join(" · ");
+    b.querySelector("p").textContent = it.summary || "No summary in the feed.";
+    b.querySelector(".news-head").onclick = () => { news.open = news.open === it.link + it.title ? null : it.link + it.title; renderNews(); };
+    b.querySelector(".news-acts .btn").onclick = () => say(`${it.title}. ${it.summary || ""}`.slice(0, 700));
+    return b;
+  }));
+}
+function renderNewsFeeds() {
+  const box = $("#news-list");
+  const rows = [head("Feeds", "Add feed", () => openSearch("", "feed"))];
+  for (const f of news.data.feeds) {
+    const d = document.createElement("div");
+    d.className = "list-item media-row";
+    d.innerHTML = `<span class="thumb"><svg><use href="#i-news"/></svg></span><span class="txt"><span class="t"></span><span class="s"></span></span><button class="btn danger">Remove</button>`;
+    d.querySelector(".t").textContent = f.name;
+    d.querySelector(".s").textContent = news.data.errors?.[f.url] ? `Last fetch failed: ${news.data.errors[f.url]}` : f.url;
+    d.querySelector("button").onclick = async () => {
+      if (!confirm(`Remove ${f.name}?`)) return;
+      news.data.feeds = (await api("/api/news/remove", { json: { url: f.url } })).feeds;
+      if (news.feed === f.url) news.feed = "";
+      loadNews();
+    };
+    rows.push(d);
+  }
+  rows.push(note("Any RSS or Atom feed: a news site, a local paper, a blog. Type its address, like npr.org/rss or the full feed link."));
+  box.replaceChildren(...rows);
+}
+async function addFeed(url) {
+  toast("Checking the feed…", 20000);
+  try {
+    await api("/api/news/add", { json: { url } });
+    toast("Feed added");
+  } catch (e) { toast(`Couldn't add it: ${e.message}`, 5000); }
+  loadNews();
+}
+// "truck, read the news": the top headlines, spoken
+async function readHeadlines(n = 5) {
+  if (!news.data?.items) await loadNews();
+  const items = news.data?.items?.slice(0, n) || [];
+  if (!items.length) { say("No headlines yet"); return "No headlines yet"; }
+  say(`Here are the headlines. ${items.map((i) => `From ${i.feed}: ${i.title}.`).join(" ")}`);
+  return `Reading ${items.length} headlines`;
+}
+
 // ---- video ----
 const video = $("#video");
 function playVideo(v) {
@@ -2556,6 +2642,7 @@ async function runCommand(raw, fromModel = false) {
     say(msg);
     return msg;
   }
+  if (/^(read|tell me|what'?s|give me)( me)? (the )?(news|headlines)|^(news|headlines)$/.test(text)) return readHeadlines();
   if (/what time/.test(text)) { const msg = `It's ${fmtClock(new Date(), true)}`; say(msg); return msg; }
   if (/where (are|am) (we|i)|what town|where is this/.test(text)) {
     const msg = whereNow ? `We're ${whereText()}` : lastPos ? "Somewhere without a town nearby" : "No GPS fix yet";
@@ -2647,6 +2734,8 @@ const ACTIONS = {
   "media-delete": () => deletePlaylist(media.stack.at(-1)?.key),
   "np-add": () => { const t = curTrack(); if (t) openSaveSheet([media.idIndex.get(t.id)]); else toast("Nothing playing"); },
   "pl-close": () => ($("#pl-sheet").hidden = true),
+  "news-refresh": () => loadNews(true),
+  "news-manage": () => { news.manage = !news.manage; $("#news-manage").textContent = news.manage ? "Done" : "Feeds"; renderNews(); },
   "player-toggle": togglePlayer,
   "radio-up": () => radioNudge(1),
   "radio-down": () => radioNudge(-1),
