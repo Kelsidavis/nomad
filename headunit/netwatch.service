@@ -1,0 +1,12 @@
+[Unit]
+Description=NOMAD network watchdog (reconnects Wi-Fi when it stalls)
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+ExecStart=/bin/sh /opt/headunit/netwatch.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
