@@ -163,6 +163,7 @@ class State:
                 "dashcam": self.dashcam,
                 "system": self.system,
                 "obd": _obd_brief(),
+                "mesh": _mesh["brief"],
             }
 
 
@@ -172,6 +173,30 @@ def _obd_brief():
     return {"status": s["status"], "mil": s["mil"], "codes": len(s["dtcs"] or []), "mpg": s["mpg"], "gph": s["gph"],
             "trip_mpg": round(s["trip"]["km"] * 0.621371 / s["trip"]["gal"], 1) if s["trip"]["gal"] > 0.02 else None,
             "v": {k: v["v"] for k, v in s["values"].items() if time.time() - v["t"] < 15}}
+
+
+# LoRa: mesh_bridge.py (mesh.service) holds the Meshtastic radio; this keeps its brief for the live state.
+MESH = "http://127.0.0.1:8805"
+_mesh = {"brief": None}
+
+
+def mesh_call(path, body=None, timeout=4):
+    req = urllib.request.Request(MESH + path, data=json.dumps(body).encode() if body is not None else None,
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        raise OSError(json.load(e).get("error") or str(e)) from None
+
+
+def mesh_loop():
+    while True:
+        try:
+            _mesh["brief"] = mesh_call("/brief", timeout=3)
+        except (OSError, ValueError):
+            _mesh["brief"] = None  # mesh.service isn't running
+        time.sleep(4)
 
 
 def _with_engine(context):
@@ -806,6 +831,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {"tracks": music.tag_tracks(lib["tracks"], lib["tags"], q["kind"], q["tag"])})
             if path == "/api/playlists":
                 return self.send(200, {"playlists": music.playlists()})
+            if path == "/api/mesh":  # the LoRa mesh: our node, the others, messages
+                try:
+                    return self.send(200, mesh_call("/state"))
+                except (OSError, ValueError):
+                    return self.send(200, {"status": "not running", "nodes": [], "messages": [], "channels": [], "prefs": {}})
             if path == "/api/obd":  # everything from the OBD adapter, codes included
                 return self.send(200, obd.status())
             if path == "/api/news":  # ?feed=<url>: the cached headlines, newest first
@@ -890,6 +920,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, network.connect(body["ssid"], body.get("password") or None))
             if path == "/api/wifi/forget":  # {ssid}
                 return self.send(200, network.forget(self.body_json()["ssid"]))
+            if path in ("/api/mesh/send", "/api/mesh/settings"):  # {text, to?, channel?} / {share?, speak?}
+                try:
+                    return self.send(200, mesh_call(path[len("/api/mesh"):], self.body_json(), timeout=10))
+                except (OSError, ValueError) as e:
+                    return self.send(400, {"error": str(e)[:160]})
             if path == "/api/obd/codes":  # read the check-engine codes now
                 return self.send(200, obd.read_codes())
             if path == "/api/obd/clear":  # clear them (and the readiness monitors)
@@ -1087,7 +1122,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
                  lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here),
-                 lambda: radio.weather_loop(here), net_loop, news.news_loop, obd.obd_loop):
+                 lambda: radio.weather_loop(here), net_loop, news.news_loop, obd.obd_loop, mesh_loop):
         threading.Thread(target=loop, daemon=True).start()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True

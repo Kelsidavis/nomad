@@ -308,6 +308,14 @@ function buildStyle() {
       "circle-color": ["interpolate", ["linear"], ["get", "hours"], 0, "#ff1744", 24, "#ff9100", 168, "#ffd54f"],
       "circle-opacity": 0.65, "circle-stroke-width": 1, "circle-stroke-color": "#000" } });
   }
+  // LoRa mesh nodes with a position (mesh_bridge.py); filled from the live state
+  sources.mesh = { type: "geojson", data: meshGeojson() };
+  layers.push(
+    { id: "mesh", type: "circle", source: "mesh", paint: { "circle-radius": 7, "circle-color": ["case", ["==", ["get", "old"], 1], "#8a8f98", "#00bfa5"],
+      "circle-stroke-width": 2, "circle-stroke-color": "#fff" } },
+    { id: "mesh-label", type: "symbol", source: "mesh", layout: { "text-field": ["get", "short"], "text-size": 12, "text-offset": [0, 1.3],
+      "text-anchor": "top", "text-font": ["Noto Sans Medium"] },
+      paint: { "text-color": theme === "dark" ? "#a7ffeb" : "#00695c", "text-halo-color": theme === "dark" ? "#000" : "#fff", "text-halo-width": 1.2 } });
   if (radarOn) {  // under the labels, over everything else
     sources.radar = { type: "raster", tiles: [`${origin}/wx/radar/{z}/{x}/{y}.png?t=${radarStamp()}`], tileSize: 256, maxzoom: 10,
       attribution: "Radar: NOAA/NWS" };
@@ -719,6 +727,7 @@ function openSearch(text = "", mode = "places") {
   if (mode === "music") return loadMedia().then(() => showMusicSearch(query));
   if (mode === "pass") { showTyped(); return ($("#search-results").innerHTML = `<div class="empty">Password for “${escapeHtml(wifiTarget)}”, then Join.</div>`); }
   if (mode === "vibe") return ($("#search-results").innerHTML = `<div class="empty">Describe it: “chill night drive”, “90s singalong”, “something like Fleetwood Mac”…</div>`);
+  if (mode === "mesh") return ($("#search-results").innerHTML = `<div class="empty">${mesh.to ? `To ${escapeHtml(nodeName(mesh.to))} only` : "To everyone on the mesh"} · up to 228 characters, then Send.</div>`);
   if (mode === "feed") return ($("#search-results").innerHTML = `<div class="empty">The feed's address, like npr.org/rss, then Add.</div>`);
   if (mode === "plname") return ($("#search-results").innerHTML = `<div class="empty">Name the playlist, then Save.</div>`);
   if (mode === "chat") return ($("#search-results").innerHTML = `<div class="empty">Type a question, then tap Send.</div>`);
@@ -737,7 +746,7 @@ function renderKeyboard() {
     }
     return `<div class="kb-row">${keys.join("")}</div>`;
   });
-  const go = { chat: "Send", pass: "Join", vibe: "Mix", plname: "Save", feed: "Add" }[searchMode] || "Search";
+  const go = { chat: "Send", pass: "Join", vibe: "Mix", plname: "Save", feed: "Add", mesh: "Send" }[searchMode] || "Search";
   rows.push(`<div class="kb-row"><button class="key wide" data-k="layer">${letters ? "123" : "ABC"}</button>
     <button class="key space" data-k=" ">space</button><button class="key wide go" data-k="go">${go}</button></div>`);
   kb.innerHTML = rows.join("");
@@ -787,6 +796,7 @@ async function runSearch() {
   if (searchMode === "pass") { closeSearch(); return wifiJoin(wifiTarget, query); }
   if (searchMode === "vibe") { closeSearch(); return q && makeVibe(q); }
   if (searchMode === "feed") { closeSearch(); return q && addFeed(q); }
+  if (searchMode === "mesh") { closeSearch(); return meshSend(query); }
   if (searchMode === "plname") { closeSearch(); return createPlaylist(q); }
   if (!q) return;
   const box = $("#search-results");
@@ -1778,6 +1788,7 @@ const fmtFreq = (f, mode) => (mode === "am" ? { v: String(Math.round(f / 1e3)), 
 const freqText = (f, mode) => { const x = fmtFreq(f, mode); return `${x.v} ${x.u}`; };
 
 async function loadRadio(force) {
+  if (radio.tab === "mesh") loadMesh();
   if (!force && Date.now() - radio.loaded < 120000) return renderRadio();
   try {
     radio.info = await api("/api/radio");
@@ -1819,6 +1830,8 @@ function renderRadio() {
     rows.push(note("Local county dispatch varies (and is often P25 digital, which this can't decode). Add local channels as presets with ★."));
   } else if (radio.tab === "sats") {
     rows.push(...satRows());
+  } else if (radio.tab === "mesh") {
+    rows.push(...meshRows());
   }
   box.replaceChildren(...rows);
 }
@@ -2487,6 +2500,123 @@ async function obdSay() {
   return msg;
 }
 
+
+// ---- LoRa: the Meshtastic mesh (mesh_bridge.py): messages and nodes, off-grid ----
+const mesh = { state: null, to: null, seen: load("meshSeen", 0) };
+const QUICK = ["On my way", "Running late", "Arrived", "OK", "Call me when you can"];
+async function loadMesh() {
+  mesh.state = await api("/api/mesh").catch((e) => ({ status: "not running", error: e.message, nodes: [], messages: [], channels: [], prefs: {} }));
+  if (currentView === "radio" && radio.tab === "mesh") renderRadio();
+}
+function meshRows() {
+  const s = mesh.state, rows = [];
+  if (!s) { loadMesh(); return [note("Loading…")]; }
+  if (s.status !== "connected") {
+    rows.push(note({ "not running": "The mesh service isn't running (sudo systemctl enable --now mesh).", "no radio": "No Meshtastic radio found. Plug one in by USB (Heltec, RAK, T-Beam...), or set MESH_DEVICE=tcp:<address> for one on Wi-Fi.",
+      off: "LoRa is off (MESH_DEVICE=off in nomad.conf).", searching: "Looking for the radio…", starting: "Starting…" }[s.status] || s.status));
+    rows.push(note("Meshtastic sends short texts and positions over LoRa, with no cell signal: several km between nodes, much further through the mesh."));
+    return rows;
+  }
+  const meNode = s.nodes.find((n) => n.me);
+  rows.push(head(`Messages · ${meNode?.name || "this radio"}`, mesh.to ? `To ${nodeName(mesh.to)} ✕` : "Write", () => (mesh.to ? (mesh.to = null, renderRadio()) : openSearch("", "mesh"))));
+  const msgs = s.messages.slice(-30);
+  if (!msgs.length) rows.push(note("No messages yet. What others send on the mesh shows up here, and is read aloud."));
+  for (const m of msgs) {
+    const d = document.createElement("div");
+    d.className = "mesh-msg" + (m.mine ? " mine" : "") + (m.dm ? " dm" : "");
+    d.innerHTML = `<div class="mesh-meta"></div><div class="mesh-text"></div>`;
+    d.querySelector(".mesh-meta").textContent = [m.mine ? (m.to_name ? `You → ${m.to_name}` : "You") : m.from_name, m.dm ? "direct" : "",
+      fmtClock(new Date(m.t * 1000), true), m.snr != null && !m.mine ? `SNR ${m.snr}` : ""].filter(Boolean).join(" · ");
+    d.querySelector(".mesh-text").textContent = m.text;
+    if (!m.mine && m.from) d.onclick = () => { mesh.to = m.from; renderRadio(); toast(`Replies go to ${m.from_name}`); };
+    rows.push(d);
+  }
+  const quick = document.createElement("div");
+  quick.className = "chips mesh-quick";
+  for (const q of [...QUICK, "📍 My location"]) {  // (setup-pi.sh installs an emoji font)
+    const b = document.createElement("button");
+    b.textContent = q;
+    b.onclick = () => (q.startsWith("📍") ? meshSendLocation() : meshSend(q));
+    quick.append(b);
+  }
+  const type = document.createElement("button");
+  type.textContent = "Type…";
+  type.className = "on";
+  type.onclick = () => openSearch("", "mesh");
+  quick.prepend(type);
+  rows.push(quick);
+  const others = s.nodes.filter((n) => !n.me);
+  rows.push(head(`Nodes heard · ${others.length}`));
+  for (const n of others) {
+    const b = document.createElement("button");
+    b.className = "list-item media-row";
+    b.innerHTML = `<span class="thumb mesh-short"></span><span class="txt"><span class="t"></span><span class="s"></span></span><span class="sat-el"></span>`;
+    b.querySelector(".mesh-short").textContent = n.short || "?";
+    b.querySelector(".t").textContent = n.name;
+    const far = n.lat != null && lastPos ? distText(haversine(lastPos.lat, lastPos.lon, n.lat, n.lon)) : null;
+    b.querySelector(".s").textContent = [n.heard ? `heard ${agoText(n.heard)}` : "", n.hops === 0 ? "direct" : n.hops ? `${n.hops} hop${n.hops === 1 ? "" : "s"}` : "",
+      n.snr != null ? `SNR ${n.snr}` : "", n.battery != null ? (n.battery > 100 ? "powered" : `${n.battery}%`) : ""].filter(Boolean).join(" · ");
+    b.querySelector(".sat-el").textContent = far || "";
+    b.onclick = () => { mesh.to = n.id; openSearch("", "mesh"); };
+    rows.push(b);
+  }
+  rows.push(head("Settings"));
+  rows.push(meshToggle("share", "Share the truck's position", "Every 5 minutes (sooner after moving), so others on the mesh see it on their maps"));
+  rows.push(meshToggle("speak", "Read messages aloud", "Spoken when they arrive, like turn prompts"));
+  return rows;
+}
+const nodeName = (id) => mesh.state?.nodes.find((n) => n.id === id)?.name || id;
+function meshToggle(key, title, sub) {
+  const b = document.createElement("button");
+  b.className = "list-item media-row";
+  const on = !!mesh.state.prefs?.[key];
+  b.innerHTML = `<span class="txt"><span class="t"></span><span class="s"></span></span><span class="switch${on ? " on" : ""}"></span>`;
+  b.querySelector(".t").textContent = title;
+  b.querySelector(".s").textContent = sub;
+  b.onclick = async () => {
+    mesh.state.prefs = await api("/api/mesh/settings", { json: { [key]: !on } }).catch((e) => (toast(e.message), mesh.state.prefs));
+    renderRadio();
+  };
+  return b;
+}
+async function meshSend(text) {
+  if (!text?.trim()) return;
+  try {
+    await api("/api/mesh/send", { json: { text, to: mesh.to } });
+    toast(mesh.to ? `Sent to ${nodeName(mesh.to)}` : "Sent to the mesh");
+  } catch (e) { toast(`Not sent: ${e.message}`, 5000); }
+  loadMesh();
+}
+function meshSendLocation() {
+  if (!lastState?.position) return toast("No GPS fix to send");
+  const p = lastState.position;
+  meshSend(`📍 ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}${whereNow ? ` (${whereText()})` : ""}`);
+}
+function meshGeojson() {
+  return { type: "FeatureCollection", features: (lastState?.mesh?.nodes || []).map(([short, lat, lon, heard, name]) => ({
+    type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] },
+    properties: { short, name, old: heard && Date.now() / 1000 - heard > 7200 ? 1 : 0 } })) };
+}
+let meshMapKey = "";
+function checkMesh(s) {
+  const b = s.mesh;
+  const key = JSON.stringify(b?.nodes || []);
+  if (map && key !== meshMapKey) { meshMapKey = key; map.getSource("mesh")?.setData(meshGeojson()); }
+  const m = b?.last;
+  if (!m || m.t <= mesh.seen) return;
+  const first = !mesh.seen;
+  mesh.seen = m.t;
+  save("meshSeen", m.t);
+  if (first) return;  // the backlog on the first start isn't news
+  toast(`Mesh · ${m.from_name}: ${m.text}`, 8000);
+  if (b.speak) say(`Mesh message from ${m.from_name}: ${m.text}`);
+  if (currentView === "radio" && radio.tab === "mesh") loadMesh();
+}
+function haversine(la1, lo1, la2, lo2) {
+  const r = Math.PI / 180, a = Math.sin((la2 - la1) * r / 2) ** 2 + Math.cos(la1 * r) * Math.cos(la2 * r) * Math.sin((lo2 - lo1) * r / 2) ** 2;
+  return 12742000 * Math.asin(Math.sqrt(a));
+}
+
 // ---- live state ----
 let lastState = null;
 function onState(s) {
@@ -2497,6 +2627,7 @@ function onState(s) {
   updatePosition(p);
   updateWhere(p);
   checkQuakeAlerts(s);
+  checkMesh(s);
   $("#st-net").setAttribute("class", "st " + (s.data === "offline" ? "off" : s.online ? (s.data === "saver" ? "warn" : "ok") : "off"));
   $("#st-net title").textContent = s.data === "offline" ? "Offline (Settings → Data use)" : !s.online ? "Offline: maps, routing, voice and music still work"
     : s.data === "saver" ? "Online, saving data" : "Online";
@@ -2743,6 +2874,14 @@ async function runCommand(raw, fromModel = false) {
   }
   if (/^(read|tell me|what'?s|give me)( me)? (the )?(news|headlines)|^(news|headlines)$/.test(text)) return readHeadlines();
   if (/engine (code|light|trouble)|check engine|trouble code|diagnos/.test(text)) return obdSay();
+  if ((m = text.match(/^(?:send (?:a )?(?:mesh|lora) (?:message )?|tell the mesh |mesh message )(.+)$/))) { await meshSend(m[1]); return `Sent to the mesh: ${m[1]}`; }
+  if (/^(read|any|check)( the| my)? (mesh|lora) (messages?)?/.test(text)) {
+    await loadMesh();
+    const ms = (mesh.state?.messages || []).filter((x) => !x.mine).slice(-3);
+    const msg = ms.length ? ms.map((x) => `${x.from_name} said: ${x.text}`).join(". ") : "No mesh messages";
+    say(msg);
+    return msg;
+  }
   if (/what time/.test(text)) { const msg = `It's ${fmtClock(new Date(), true)}`; say(msg); return msg; }
   if (/where (are|am) (we|i)|what town|where is this/.test(text)) {
     const msg = whereNow ? `We're ${whereText()}` : lastPos ? "Somewhere without a town nearby" : "No GPS fix yet";

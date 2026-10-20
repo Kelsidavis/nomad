@@ -12,7 +12,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 echo "== packages"
 apt-get update -qq
-apt-get install -y -qq adb rclone fuse3 gpsd gpsd-clients chrony docker.io alsa-utils rtl-sdr satdump ffmpeg python3-venv >/dev/null
+apt-get install -y -qq adb rclone fuse3 gpsd gpsd-clients chrony docker.io alsa-utils rtl-sdr satdump ffmpeg python3-venv fonts-noto-color-emoji >/dev/null
 
 echo "== SDR: keep the kernel's DVB-T TV driver off the dongle so rtl-sdr can use it"
 printf 'blacklist dvb_usb_rtl28xxu\nblacklist rtl2832\nblacklist rtl2830\n' > /etc/modprobe.d/rtl-sdr-blacklist.conf
@@ -58,7 +58,7 @@ EOT
 
 echo "== head unit UI"
 mkdir -p /opt/headunit
-cp -r "$REPO"/headunit/server.py "$REPO"/headunit/offline.py "$REPO"/headunit/intent.py "$REPO"/headunit/tts_server.py "$REPO"/headunit/radio.py "$REPO"/headunit/bt.py "$REPO"/headunit/config.py "$REPO"/headunit/emergency.py "$REPO"/headunit/network.py "$REPO"/headunit/music.py "$REPO"/headunit/news.py "$REPO"/headunit/obd.py "$REPO"/headunit/static "$REPO"/headunit/headunit-kiosk.sh /opt/headunit/
+cp -r "$REPO"/headunit/server.py "$REPO"/headunit/offline.py "$REPO"/headunit/intent.py "$REPO"/headunit/tts_server.py "$REPO"/headunit/radio.py "$REPO"/headunit/bt.py "$REPO"/headunit/config.py "$REPO"/headunit/emergency.py "$REPO"/headunit/network.py "$REPO"/headunit/music.py "$REPO"/headunit/news.py "$REPO"/headunit/obd.py "$REPO"/headunit/mesh_bridge.py "$REPO"/headunit/static "$REPO"/headunit/headunit-kiosk.sh /opt/headunit/
 chmod 755 /opt/headunit/headunit-kiosk.sh
 mkdir -p /opt/headunit/tools && cp "$REPO"/headunit/tools/sat_passes.py "$REPO"/headunit/tools/sstv_decode.py "$REPO"/headunit/tools/fetch_emergency.py "$REPO"/headunit/tools/bench_intents.py /opt/headunit/tools/
 # satellite passes and SSTV pictures for the radio tab: sgp4 and sstv in their own venv
@@ -74,7 +74,9 @@ if [ ! -s "$H/models/kokoro/voices-v1.0.bin" ]; then
     sudo -u "$U" sh -c 'python3 -m venv ~/.venvs/kokoro && ~/.venvs/kokoro/bin/pip install -q kokoro-onnx==0.6.1 && mkdir -p ~/models/kokoro && cd ~/models/kokoro &&
         for f in kokoro-v1.0.int8.onnx voices-v1.0.bin; do curl -fsSL -o $f https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/$f; done'
 fi
-for s in stt tts; do sed "s#/home/k/#$H/#g; s/^User=k$/User=$U/" "$REPO"/headunit/$s.service > /etc/systemd/system/$s.service; done
+# LoRa: the meshtastic library for mesh_bridge.py (mesh.service), in ~/.venvs/mesh
+[ -x "$H/.venvs/mesh/bin/python" ] || sudo -u "$U" sh -c 'python3 -m venv ~/.venvs/mesh && ~/.venvs/mesh/bin/pip install -q meshtastic'
+for s in stt tts mesh; do sed "s#/home/k/#$H/#g; s/^User=k$/User=$U/" "$REPO"/headunit/$s.service > /etc/systemd/system/$s.service; done
 install -o "$U" -g "$U" -d "$H/.config/autostart" "$H/.local/share/headunit"
 rm -f "$H/.config/autostart/headunit.desktop"  # the NOMAD session's labwc autostart starts the kiosk now
 
@@ -117,7 +119,7 @@ if command -v rpi-eeprom-config >/dev/null && ! rpi-eeprom-config | grep -q '^BO
 fi
 
 systemctl daemon-reload
-systemctl enable gpsd.socket gpsd chrony headunit valhalla llm stt tts >/dev/null 2>&1
+systemctl enable gpsd.socket gpsd chrony headunit valhalla llm stt tts mesh >/dev/null 2>&1
 systemctl restart gpsd chrony headunit
 systemctl start valhalla || true  # waits for the routing data
 systemctl start llm stt tts || true  # wait for their models

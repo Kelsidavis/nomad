@@ -43,3 +43,8 @@ NOMAD's own code is GPL-3.0-or-later ([LICENSE](LICENSE)). These keep their own 
 ## News feeds (default list)
 
 Headlines come from the publishers' public RSS feeds (NPR, BBC, The Guardian, Ars Technica) and stay their property; NOMAD shows titles and summaries and links back.
+
+## LoRa and fonts
+
+- [meshtastic](https://github.com/meshtastic/python) (GPL-3.0), installed by `setup-pi.sh` in `~/.venvs/mesh` for `mesh_bridge.py`.
+- Noto Color Emoji (SIL Open Font License), the Debian package `fonts-noto-color-emoji`, so emoji in messages show.

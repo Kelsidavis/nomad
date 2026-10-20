@@ -130,6 +130,27 @@ def gps():
     return f"fix mode {g['mode']}, {g['sats_used'] or 0}/{g['sats_seen'] or 0} satellites"
 
 
+def news():
+    d = get("/api/news")
+    if not d["items"]:
+        raise RuntimeError("no headlines cached yet (they download when online)")
+    return f"{len(d['items'])} headlines from {len(d['feeds'])} feeds"
+
+
+def obd():
+    s = get("/api/obd")
+    if s["status"] != "connected":
+        raise RuntimeError(f"{s['status']}{': ' + s['error'] if s.get('error') else ''}")
+    return f"{s['adapter']}, {s['protocol']}, {len(s['dtcs'] or [])} codes"
+
+
+def mesh():
+    s = get("/api/mesh")
+    if s["status"] != "connected":
+        raise RuntimeError(s["status"])
+    return f"{s['me']['name'] if s.get('me') else 'radio'} on {s['device']}, {len(s['nodes'])} nodes"
+
+
 if __name__ == "__main__":
     quick = "--quick" in sys.argv
     check("services", services)
@@ -141,6 +162,9 @@ if __name__ == "__main__":
     check("media", media)
     check("weather", weather, required=False)
     check("emergency", emergency, required=False)
+    check("news", news, required=False)
+    check("OBD-II", obd, required=False)
+    check("LoRa mesh", mesh, required=False)
     check("speech out (Kokoro)", tts)
     check("speech in (whisper)", stt)
     if not quick:

@@ -12,6 +12,7 @@ Pi itself and keep working with no signal; it goes online only for what it doesn
 | **Assistant** | A chat tab with Gemma 4 E2B, its reasoning streamed live as it thinks |
 | **Media** | A 25,000-track library (artists, albums, songs, search, album art), browse by mood, style, genre and decade (Plex's tags), mixes from a described vibe ("chill night drive", "something like Blink-182"; the voice model picks the tags), playlists, spectrum visualizers, full-screen now playing, video; `tools/plex_music.py` copies a Plex library and converts lossless to Opus |
 | **Radio (SDR)** | FM/AM with band scan, NOAA weather radio, an EMS/fire/marine/air/ham scanner, satellite pass predictions with Doppler-corrected tuning, and automatic capture: Meteor-M2 weather images (SatDump) and ISS SSTV pictures |
+| **LoRa mesh** | A Meshtastic radio (USB or Wi-Fi) for off-grid texts with no cell signal: messages read aloud, quick replies, send your location, direct messages, nodes heard with distance and signal, nodes on the map, opt-in position sharing; "Truck, tell the mesh I'm on my way" |
 | **Weather** | NWS forecast and alerts, GOES-18 satellite pictures, radar on the map; cached for when you're offline |
 | **News** | RSS and Atom headlines (NPR, BBC, Guardian, Ars Technica to start; add any feed), downloaded in the background and kept for offline; "Truck, read the news" |
 | **Emergency** | Tsunami evacuation zones, routes and assembly areas (WA, OR; offline) with "am I in a zone?", one-tap routes to high ground, open FEMA shelters, Red Cross, community centers, hospitals and fire stations nearby, USGS earthquakes on the map with spoken alerts; "Truck, evacuate" |
@@ -89,6 +90,7 @@ connection. `HEADUNIT_OFFLINE=1` turns the fallbacks off, to check the offline d
 | `GPS_SERIAL` | the GPS bridge's serial for its udev rule; empty = whichever CP210x is plugged in at setup |
 | `PLEX_*`, `MUSIC_OUT` | defaults for `tools/plex_music.py` |
 | `OBD_DEVICE` | the OBD-II adapter: `auto` (USB ports, then paired Bluetooth adapters), `/dev/ttyUSB1`, `bt:<mac>`, `tcp:192.168.0.10:35000`, or `off`; `tools/elm327_sim.py` pretends to be one |
+| `MESH_DEVICE` | the Meshtastic radio: `auto` (a USB board, never the GPS or OBD port), `/dev/ttyACM0`, `tcp:<host>`, or `off` |
 | `NEWS_FEEDS` | the starting feed list, `Name|url, Name|url` (after that, edit it on the News screen) |
 
 Everything else is in the Settings screen: units, theme, accent color, voice, visualizer, home, Wi-Fi networks,

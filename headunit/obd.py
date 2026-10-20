@@ -16,6 +16,7 @@ ones (temperatures, fuel level, voltage) every few seconds, and runs the reads a
 """
 import glob
 import os
+import pathlib
 import queue
 import re
 import select
@@ -26,6 +27,9 @@ import threading
 import time
 
 import config
+
+DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit"))
+RUN = DATA / "run"  # which serial port each radio holds (mesh_bridge.py writes mesh.port), so neither probes the other's
 
 # (key, pid, label, unit, decode(bytes) -> value, fast)
 PIDS = [
@@ -256,9 +260,13 @@ def _candidates():
         return [lambda: _tcp(host, port or 35000)]
     if dev != "auto":
         return [lambda b=b: _serial(dev, b) for b in bauds]
-    gps = _gps_port()
+    taken = {_gps_port()}
+    try:
+        taken.add(os.path.realpath((RUN / "mesh.port").read_text().strip()))
+    except OSError:
+        pass
     ports = [p for p in sorted(glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*") + glob.glob("/dev/rfcomm*"))
-             if os.path.realpath(p) != gps]
+             if os.path.realpath(p) not in taken]
     out = [lambda p=p, b=b: _serial(p, b) for p in ports for b in bauds]
     out += [lambda m=m: _rfcomm(m) for m in _paired_obd()]
     return out
@@ -366,6 +374,9 @@ def _connect():
             elm = Elm(link)
             version = elm.setup()
             _set(status="connecting", adapter=link.desc, elm=version, error=None)
+            if hasattr(link, "fd"):
+                RUN.mkdir(parents=True, exist_ok=True)
+                (RUN / "obd.port").write_text(link.desc.split(" @ ")[0])
             if elm.query(0x01, 0x00, timeout=12) is None:  # the first query also finds the protocol (slow)
                 link.close()
                 _set(status="no ecu", error="The adapter answers but the truck doesn't: is the ignition on?")
@@ -497,6 +508,7 @@ def obd_loop():
                     time.sleep(1)
         except (OSError, TimeoutError, ValueError) as e:
             elm.link.close()
+            (RUN / "obd.port").unlink(missing_ok=True)
             _set(status="searching", error=str(e)[:120])
             time.sleep(5)
 

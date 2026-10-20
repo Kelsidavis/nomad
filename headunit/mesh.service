@@ -1,0 +1,14 @@
+[Unit]
+Description=NOMAD LoRa: Meshtastic radio bridge on 127.0.0.1:8805
+After=network.target
+
+[Service]
+ExecStart=/home/k/.venvs/mesh/bin/python /opt/headunit/mesh_bridge.py
+Restart=always
+RestartSec=10
+User=k
+EnvironmentFile=-/etc/nomad.conf
+Nice=5
+
+[Install]
+WantedBy=multi-user.target
