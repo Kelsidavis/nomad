@@ -26,14 +26,21 @@ def track_tags(t, meta):
 
 
 def categories(tracks, meta):
-    """{"mood": [[tag, n], ...], "style": ..., "genre": ..., "decade": ...}: tags by how many tracks have them."""
-    counts = {k: collections.Counter() for k in ("mood", "style", "genre", "decade")}
+    """{"mood": [[tag, songs], ...], "style": ..., "genre": ..., "decade": ...}, most albums first: ranked by albums,
+    not songs, so one artist with a huge catalog doesn't fill the top of every list."""
+    songs = {k: collections.Counter() for k in ("mood", "style", "genre", "decade")}
+    albums = {k: collections.defaultdict(set) for k in songs}
     for t in tracks:
-        for k, v in track_tags(t, meta).items():
-            counts[k].update(v)
+        key = (t["album_artist"], t["album"])
+        tags = track_tags(t, meta)
         if t.get("year"):
-            counts["decade"][f"{t['year'] // 10 * 10}s"] += 1
-    out = {k: [[tag, n] for tag, n in c.most_common() if n >= 3] for k, c in counts.items()}
+            tags["decade"] = {f"{t['year'] // 10 * 10}s"}
+        for k, v in tags.items():
+            songs[k].update(v)
+            for tag in v:
+                albums[k][tag].add(key)
+    out = {k: [[tag, songs[k][tag]] for tag in sorted(albums[k], key=lambda tag: (-len(albums[k][tag]), -songs[k][tag]))
+               if songs[k][tag] >= 3] for k in songs}
     out["decade"].sort()
     return out
 
