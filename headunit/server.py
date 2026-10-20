@@ -48,6 +48,8 @@ import music  # noqa: E402
 import news  # noqa: E402
 import obd  # noqa: E402
 import trip  # noqa: E402
+import adsb  # noqa: E402
+import fuel  # noqa: E402
 
 PORT = int(os.environ.get("HEADUNIT_PORT", 8800))
 BIND = os.environ.get("HEADUNIT_BIND", "127.0.0.1")
@@ -223,6 +225,14 @@ def mesh_loop():
         except (OSError, ValueError):
             _mesh["brief"] = None  # mesh.service isn't running
         time.sleep(4)
+
+
+def _state_code():
+    """The state the forecast is for ("Longview, WA" -> "WA"), for the regional fuel prices."""
+    try:
+        return json.loads(radio.FORECAST.read_text())["place"].rsplit(", ", 1)[1][:2]
+    except (OSError, ValueError, KeyError, IndexError):
+        return None
 
 
 def _with_engine(context):
@@ -862,6 +872,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, mesh_call("/state"))
                 except (OSError, ValueError):
                     return self.send(200, {"status": "not running", "nodes": [], "messages": [], "channels": [], "prefs": {}})
+            if path == "/api/adsb":  # aircraft heard on 1090 MHz; asking keeps the receiver on for a while
+                adsb.want()
+                return self.send(200, adsb.status())
+            if path == "/api/fuel":  # fill-ups with mpg, money spent, stations' prices, and the weekly averages
+                return self.send(200, {**fuel.summary(), "prices": fuel.prices(_state_code())})
             if path == "/api/trip":  # odometer, trips A and B, oil change
                 return self.send(200, trip.status())
             if path == "/api/obd":  # everything from the OBD adapter, codes included
@@ -953,6 +968,22 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, mesh_call(path[len("/api/mesh"):], self.body_json(), timeout=10))
                 except (OSError, ValueError) as e:
                     return self.send(400, {"error": str(e)[:160]})
+            if path == "/api/adsb":  # {always}: keep receiving with the screen elsewhere
+                adsb.set_always(self.body_json().get("always"))
+                return self.send(200, adsb.status())
+            if path == "/api/fuel/add":  # {gallons, price? | total?, full?, station?: {name, lat, lon}}
+                body = self.body_json()
+                try:
+                    _, entry = fuel.add(body["gallons"], body.get("price"), body.get("total"), body.get("full", True),
+                                        body.get("station"), body.get("grade", "Regular"))
+                except (KeyError, ValueError, TypeError) as e:
+                    return self.send(400, {"error": str(e)})
+                return self.send(200, {**fuel.summary(), "added": entry})
+            if path == "/api/fuel/delete":  # {id}
+                fuel.delete(self.body_json()["id"])
+                return self.send(200, fuel.summary())
+            if path == "/api/fuel/prices":  # fetch the averages again now
+                return self.send(200, fuel.prices(_state_code(), force=True))
             if path == "/api/route/weather":  # {points: [[lat, lon, km_along]], arrive}: alerts on the way, weather on arrival
                 if not network.allowed("ask"):
                     return self.send(200, {"alerts": [], "arrival": None, "offline": True})
@@ -1166,7 +1197,7 @@ def main():
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
                  lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here),
                  lambda: radio.weather_loop(here), net_loop, news.news_loop, obd.obd_loop, mesh_loop, road_loop,
-                 lambda: trip.trip_loop(lambda: state.position(time.time()))):
+                 lambda: trip.trip_loop(lambda: state.position(time.time())), lambda: adsb.adsb_loop(here)):
         threading.Thread(target=loop, daemon=True).start()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True

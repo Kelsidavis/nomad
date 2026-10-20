@@ -28,3 +28,6 @@ MUSIC_OUT=~/CarMusic
 
 # LoRa: the Meshtastic radio: auto (a USB board), /dev/ttyACM0, tcp:<host> (a node on Wi-Fi), or off
 #MESH_DEVICE=auto
+
+# Weekly fuel price averages: a free key from https://www.eia.gov/opendata/register.php
+#EIA_API_KEY=

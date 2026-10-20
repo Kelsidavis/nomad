@@ -26,6 +26,7 @@
   <symbol id="i-person" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/></symbol>
   <symbol id="i-radio" viewBox="0 0 24 24"><path d="M3.2 6.2A2 2 0 0 0 2 8v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2H8.3l8.3-3.3L15.9 1zM7 20a3 3 0 1 1 3-3 3 3 0 0 1-3 3zm13-8h-2v-2h-2v2H4V8h16z"/></symbol>
   <symbol id="i-sat" viewBox="0 0 24 24"><path d="m12.4 4.6 2.8-2.8 4.2 4.2-2.8 2.8zm-8 8 2.8-2.8 4.2 4.2-2.8 2.8zm4.3-2.1 3.5-3.5 4.2 4.2-3.5 3.5zM15 21v-2a4 4 0 0 0 4-4h2a6 6 0 0 1-6 6zm0-4v-2h2a2 2 0 0 1-2 2z"/></symbol>
+  <symbol id="i-plane" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z"/></symbol>
   <symbol id="i-news" viewBox="0 0 24 24"><path d="M4 4h13v14a2 2 0 0 0 2 2H5a3 3 0 0 1-3-3V6a2 2 0 0 1 2-2zm2 3v4h4V7zm6 0v1.5h3V7zm0 3v1.5h3V10zM6 13v1.5h9V13zm0 3v1.5h9V16zm13-8h2v10a2 2 0 0 1-4 0V8z"/></symbol>
   <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M19.4 10A7.5 7.5 0 0 0 5.4 8 6 6 0 0 0 6 20h13a5 5 0 0 0 .4-10z"/></symbol>
   <symbol id="i-fav" viewBox="0 0 24 24"><path d="M12 17.3 18.2 21l-1.6-7L22 9.2l-7.2-.6L12 2 9.2 8.6 2 9.2 7.5 14l-1.7 7z"/></symbol>
@@ -213,7 +214,7 @@
       </div>
       <div class="media-tabs" id="radio-tabs">
         <button data-tab="fm">FM</button><button data-tab="am">AM</button><button data-tab="weather">NOAA</button>
-        <button data-tab="scanner">Scanner</button><button data-tab="sats">Satellites</button><button data-tab="mesh">Mesh</button>
+        <button data-tab="scanner">Scanner</button><button data-tab="sats">Satellites</button><button data-tab="air">Aircraft</button><button data-tab="mesh">Mesh</button>
       </div>
       <div class="list" id="radio-list"><div class="empty">Loading…</div></div>
     </div>
@@ -303,6 +304,7 @@
         </div>
       </div>
       <div class="card trip-card"><div class="eyebrow">Trip computer</div><div id="trip-kv"></div></div>
+      <div class="card trip-card"><div class="eyebrow">Fuel</div><div id="fuel-kv"></div></div>
       <div class="kv" id="vehicle-kv"></div>
     </div>
 
@@ -446,6 +448,7 @@
       <button data-layer="3d"><svg><use href="#i-mountain"/></svg>3D terrain</button>
       <button data-layer="tsunami"><svg><use href="#i-sos"/></svg>Tsunami zones</button>
       <button data-layer="quakes"><svg><use href="#i-contour"/></svg>Earthquakes</button>
+      <button data-layer="aircraft"><svg><use href="#i-plane"/></svg>Aircraft (SDR)</button>
     </div>
   </main>
 </div>

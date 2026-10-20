@@ -13,9 +13,11 @@ Pi itself and keep working with no signal; it goes online only for what it doesn
 | **Media** | A 25,000-track library (artists, albums, songs, search, album art), browse by mood, style, genre and decade (Plex's tags), mixes from a described vibe ("chill night drive", "something like Blink-182"; the voice model picks the tags), playlists, spectrum visualizers, full-screen now playing, video; `tools/plex_music.py` copies a Plex library and converts lossless to Opus |
 | **Radio (SDR)** | FM/AM with band scan, NOAA weather radio, an EMS/fire/marine/air/ham scanner, satellite pass predictions with Doppler-corrected tuning, and automatic capture: Meteor-M2 weather images (SatDump) and ISS SSTV pictures |
 | **LoRa mesh** | A Meshtastic radio (USB or Wi-Fi) for off-grid texts with no cell signal: messages read aloud, quick replies, send your location, direct messages, nodes heard with distance and signal, nodes on the map, opt-in position sharing; "Truck, tell the mesh I'm on my way" |
+| **Aircraft (ADS-B)** | Planes overhead from their 1090 MHz broadcasts with the same SDR (rtl_adsb, decoded here): on the map with heading, callsign, altitude and trail, a list by distance, emergency squawks in red; "Truck, what plane is that?" |
 | **Weather** | NWS forecast and alerts, GOES-18 satellite pictures, radar on the map; cached for when you're offline |
 | **News** | RSS and Atom headlines (NPR, BBC, Guardian, Ars Technica to start; add any feed), downloaded in the background and kept for offline; "Truck, read the news" |
 | **Emergency** | Tsunami evacuation zones, routes and assembly areas (WA, OR; offline) with "am I in a zone?", one-tap routes to high ground, open FEMA shelters, Red Cross, community centers, hospitals and fire stations nearby, USGS earthquakes on the map with spoken alerts; "Truck, evacuate" |
+| **Fuel** | Weekly average prices for your state, region and the US (EIA, free key), a fill-up log with real mpg, cost per mile and monthly spending, and what you paid at each station shown when you search for gas; "Truck, I put in 18.5 gallons at 3.89", "how much is gas?" |
 | **Vehicle** | OBD-II through any ELM327 adapter (USB, Bluetooth or Wi-Fi): rpm, temperatures, voltage, fuel level, live and trip mpg, check-engine codes with descriptions (read, clear), spoken warnings (overheating, charging, low fuel, new codes), a trip computer (two trips, odometer, oil-change reminder), "Truck, any engine codes?"; GPS (gpsd), satellite sky plot, g-meter, compass, Pi power and temperature |
 | **Boot** | NOMAD splash screen, quiet boot, and a session that is only the head unit: no desktop, panel or file manager |
 | **Look** | Android Auto-style layout from 800x480 up to 1080p, collapsible panels, dark/light by sunrise, accent color from the album art |
@@ -91,6 +93,7 @@ connection. `HEADUNIT_OFFLINE=1` turns the fallbacks off, to check the offline d
 | `PLEX_*`, `MUSIC_OUT` | defaults for `tools/plex_music.py` |
 | `OBD_DEVICE` | the OBD-II adapter: `auto` (USB ports, then paired Bluetooth adapters), `/dev/ttyUSB1`, `bt:<mac>`, `tcp:192.168.0.10:35000`, or `off`; `tools/elm327_sim.py` pretends to be one |
 | `MESH_DEVICE` | the Meshtastic radio: `auto` (a USB board, never the GPS or OBD port), `/dev/ttyACM0`, `tcp:<host>`, or `off` |
+| `EIA_API_KEY` | free key from eia.gov/opendata for the weekly fuel price averages |
 | `NEWS_FEEDS` | the starting feed list, `Name|url, Name|url` (after that, edit it on the News screen) |
 
 Everything else is in the Settings screen: units, theme, accent color, voice, visualizer, home, Wi-Fi networks,

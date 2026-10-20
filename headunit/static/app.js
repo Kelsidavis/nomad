@@ -209,7 +209,7 @@ let home = load("home", null);  // {name, address, lat, lon}: Settings → Home
 let radarOn = load("radar", false);
 // Elevation layers (server.py /terrain: the downloaded DEM, else AWS when online). mlcontour makes contour lines
 // from the same tiles in a worker.
-const terrain = { hillshade: false, relief: false, contours: false, "3d": false, tsunami: false, quakes: false, ...load("terrainLayers", {}) };
+const terrain = { hillshade: false, relief: false, contours: false, "3d": false, tsunami: false, quakes: false, aircraft: false, ...load("terrainLayers", {}) };
 let dem = null;  // mlcontour.DemSource, made in initMap
 const DEM_MAXZOOM = 11;  // NEXRAD radar over the map (radio.py radar_tile), new frames every 5 min
 const radarStamp = () => Math.floor(Date.now() / 300000);
@@ -311,6 +311,18 @@ function buildStyle() {
       "circle-color": ["interpolate", ["linear"], ["get", "hours"], 0, "#ff1744", 24, "#ff9100", 168, "#ffd54f"],
       "circle-opacity": 0.65, "circle-stroke-width": 1, "circle-stroke-color": "#000" } });
   }
+  if (terrain.aircraft) {  // ADS-B (adsb.py): filled by pollAir
+    sources.planes = { type: "geojson", data: planesGeojson(air.data) };
+    sources["plane-trails"] = { type: "geojson", data: trailsGeojson(air.data) };
+    layers.push(
+      { id: "plane-trails", type: "line", source: "plane-trails", paint: { "line-color": "#ffb300", "line-width": 1.5, "line-opacity": 0.6, "line-dasharray": [2, 2] } },
+      { id: "planes", type: "symbol", source: "planes", layout: { "icon-image": "plane", "icon-size": ["interpolate", ["linear"], ["zoom"], 6, 0.45, 12, 0.7],
+        "icon-rotate": ["get", "track"], "icon-rotation-alignment": "map", "icon-allow-overlap": true,
+        "text-field": ["get", "label"], "text-size": 11, "text-offset": [0, 1.6], "text-anchor": "top", "text-font": ["Noto Sans Medium"], "text-optional": true },
+        paint: { "icon-color": ["case", ["==", ["get", "emergency"], 1], "#ff1744", ["==", ["get", "stale"], 1], "#9e9e9e", "#ffb300"],
+          "icon-halo-color": "#000", "icon-halo-width": 1,
+          "text-color": theme === "dark" ? "#ffe082" : "#6d4c00", "text-halo-color": theme === "dark" ? "#000" : "#fff", "text-halo-width": 1.2 } });
+  }
   // LoRa mesh nodes with a position (mesh_bridge.py); filled from the live state
   sources.mesh = { type: "geojson", data: meshGeojson() };
   layers.push(
@@ -347,6 +359,7 @@ function toggleLayer(key) {
   if (key === "3d" && terrain["3d"]) map.easeTo({ pitch: Math.max(map.getPitch(), 55), duration: 600 });
   paintLayers();
   restyleMap();
+  if (key === "aircraft") pollAir();
 }
 function paintLayers() {
   const on = { satellite, radar: radarOn, ...terrain };
@@ -389,6 +402,7 @@ async function initMap() {
     center: lastPos ? [lastPos.lon, lastPos.lat] : home ? [home.lon, home.lat] : [-98.6, 39.8], zoom: lastPos ? 16 : home ? 12 : 3.5,
   });
   map.addControl(new maplibregl.AttributionControl({ compact: true }), "top-right");
+  map.on("styleimagemissing", (e) => { if (e.id === "plane" && !map.hasImage("plane")) map.addImage("plane", planeImage(), { sdf: true }); });
   map.on("dragstart", () => setFollow(false));
   map.on("rotatestart", (e) => { if (e.originalEvent) setFollow(false); });
   map.on("contextmenu", (e) => previewRoute({ name: "Dropped pin", address: `${e.lngLat.lat.toFixed(5)}, ${e.lngLat.lng.toFixed(5)}`, lat: e.lngLat.lat, lon: e.lngLat.lng }));
@@ -734,6 +748,7 @@ function openSearch(text = "", mode = "places") {
   if (mode === "music") return loadMedia().then(() => showMusicSearch(query));
   if (mode === "pass") { showTyped(); return ($("#search-results").innerHTML = `<div class="empty">Password for “${escapeHtml(wifiTarget)}”, then Join.</div>`); }
   if (mode === "vibe") return ($("#search-results").innerHTML = `<div class="empty">Describe it: “chill night drive”, “90s singalong”, “something like Fleetwood Mac”…</div>`);
+  if (mode === "fuel") return ($("#search-results").innerHTML = `<div class="empty">Gallons, then the price a gallon: <b>18.5 3.89</b><br>or gallons and the total: <b>18.5 $70.12</b>. Add “partial” if you didn't fill the tank.</div>`);
   if (mode === "odo") return ($("#search-results").innerHTML = `<div class="empty">The odometer reading in ${settings.units === "imperial" ? "miles" : "km"}, then Set.</div>`);
   if (mode === "mesh") return ($("#search-results").innerHTML = `<div class="empty">${mesh.to ? `To ${escapeHtml(nodeName(mesh.to))} only` : "To everyone on the mesh"} · up to 228 characters, then Send.</div>`);
   if (mode === "feed") return ($("#search-results").innerHTML = `<div class="empty">The feed's address, like npr.org/rss, then Add.</div>`);
@@ -754,7 +769,7 @@ function renderKeyboard() {
     }
     return `<div class="kb-row">${keys.join("")}</div>`;
   });
-  const go = { chat: "Send", pass: "Join", vibe: "Mix", plname: "Save", feed: "Add", mesh: "Send", odo: "Set" }[searchMode] || "Search";
+  const go = { chat: "Send", pass: "Join", vibe: "Mix", plname: "Save", feed: "Add", mesh: "Send", odo: "Set", fuel: "Log" }[searchMode] || "Search";
   rows.push(`<div class="kb-row"><button class="key wide" data-k="layer">${letters ? "123" : "ABC"}</button>
     <button class="key space" data-k=" ">space</button><button class="key wide go" data-k="go">${go}</button></div>`);
   kb.innerHTML = rows.join("");
@@ -788,7 +803,7 @@ function resultItem(d) {
   b.className = "list-item";
   b.innerHTML = `<div><div class="t"></div><div class="s"></div></div><div class="d"></div>`;
   b.querySelector(".t").textContent = d.name;
-  b.querySelector(".s").textContent = d.address || "";
+  b.querySelector(".s").textContent = [d.address || "", paidAt(d)].filter(Boolean).join(" · ");
   if (lastPos) {
     const m = Math.hypot((d.lat - lastPos.lat) * 110540, (d.lon - lastPos.lon) * 111320 * Math.cos(lastPos.lat * RAD));
     b.querySelector(".d").textContent = distText(m);
@@ -806,6 +821,7 @@ async function runSearch() {
   if (searchMode === "feed") { closeSearch(); return q && addFeed(q); }
   if (searchMode === "mesh") { closeSearch(); return meshSend(query); }
   if (searchMode === "odo") { closeSearch(); return setOdometer(q); }
+  if (searchMode === "fuel") { closeSearch(); return logFill(q); }
   if (searchMode === "plname") { closeSearch(); return createPlaylist(q); }
   if (!q) return;
   const box = $("#search-results");
@@ -1798,6 +1814,7 @@ const freqText = (f, mode) => { const x = fmtFreq(f, mode); return `${x.v} ${x.u
 
 async function loadRadio(force) {
   if (radio.tab === "mesh") loadMesh();
+  if (radio.tab === "air") pollAir();
   if (!force && Date.now() - radio.loaded < 120000) return renderRadio();
   try {
     radio.info = await api("/api/radio");
@@ -1841,6 +1858,8 @@ function renderRadio() {
     rows.push(...satRows());
   } else if (radio.tab === "mesh") {
     rows.push(...meshRows());
+  } else if (radio.tab === "air") {
+    rows.push(...airRows());
   }
   box.replaceChildren(...rows);
 }
@@ -2384,6 +2403,7 @@ function renderVehicle(s) {
   const p = s.position, sys = s.system || {}, ph = s.phone || {}, batt = ph.status?.battery;
   renderObd(s.obd);
   if (!tripInfo || Date.now() - (renderVehicle.tripAt || 0) > 5000) { renderVehicle.tripAt = Date.now(); loadTrip(); }
+  if (!fuelInfo || Date.now() - (renderVehicle.fuelAt || 0) > 60000) { renderVehicle.fuelAt = Date.now(); loadFuel(); }
   drawCompass(p ? heading : null);
   const acc = ph.linear_accel;  // the phone's accelerometer, when one is connected
   drawG(s.gps.g || (acc ? [acc[0] / 9.81, acc[1] / 9.81] : null));
@@ -2762,6 +2782,162 @@ function paintRouteWeather() {
 }
 setInterval(() => nav.active && routeWeather(), 15 * 60 * 1000);
 
+
+// ---- ADS-B (adsb.py): aircraft from their 1090 MHz broadcasts, on the map and the Radio screen ----
+const air = { data: null, timer: null };
+function airWanted() { return terrain.aircraft || (currentView === "radio" && radio.tab === "air"); }
+async function pollAir() {
+  clearTimeout(air.timer);
+  if (!airWanted()) { if (map?.getSource("planes")) map.getSource("planes").setData(planesGeojson(null)); return; }
+  air.data = await api("/api/adsb").catch(() => air.data);
+  if (map?.getSource("planes")) {
+    map.getSource("planes").setData(planesGeojson(air.data));
+    map.getSource("plane-trails")?.setData(trailsGeojson(air.data));
+  }
+  if (currentView === "radio" && radio.tab === "air") renderRadio();
+  air.timer = setTimeout(pollAir, 2000);
+}
+function planesGeojson(d) {
+  return { type: "FeatureCollection", features: (d?.aircraft || []).filter((p) => p.lat != null && p.pos_age < 60).map((p) => ({
+    type: "Feature", geometry: { type: "Point", coordinates: [p.lon, p.lat] },
+    properties: { track: p.track ?? 0, label: `${p.call || p.icao}\n${p.alt_ft != null ? altText(p.alt_ft) : ""}`, stale: p.pos_age > 20 ? 1 : 0,
+      emergency: p.emergency || /^7(500|600|700)$/.test(p.squawk || "") ? 1 : 0 } })) };
+}
+function trailsGeojson(d) {
+  return { type: "FeatureCollection", features: (d?.aircraft || []).filter((p) => p.trail?.length > 1).map((p) => ({
+    type: "Feature", geometry: { type: "LineString", coordinates: p.trail.map(([la, lo]) => [lo, la]) }, properties: {} })) };
+}
+const altText = (ft) => ft >= 18000 ? `FL${Math.round(ft / 100)}` : settings.units === "imperial" ? `${Math.round(ft / 100) * 100} ft` : `${Math.round(ft * 0.3048 / 10) * 10} m`;
+function planeImage() {  // a plane silhouette pointing north, drawn once (SDF, so the layer colors it)
+  const c = document.createElement("canvas");
+  c.width = c.height = 48;
+  const g = c.getContext("2d");
+  g.fillStyle = "#fff";
+  g.beginPath();
+  g.moveTo(24, 2); g.lineTo(27, 16); g.lineTo(45, 26); g.lineTo(45, 30); g.lineTo(27, 25); g.lineTo(26, 38);
+  g.lineTo(32, 43); g.lineTo(32, 46); g.lineTo(24, 43); g.lineTo(16, 46); g.lineTo(16, 43); g.lineTo(22, 38);
+  g.lineTo(21, 25); g.lineTo(3, 30); g.lineTo(3, 26); g.lineTo(21, 16); g.closePath();
+  g.fill();
+  return g.getImageData(0, 0, 48, 48);
+}
+function airRows() {
+  const d = air.data, rows = [];
+  if (!d) { pollAir(); return [note("Starting the receiver…")]; }
+  const state = !d.sdr ? "SDR not connected: plug in the Nooelec v5." : d.error ? d.error
+    : d.busy ? "The radio is using the SDR (listening or a satellite capture); aircraft resume when it's free."
+    : d.running ? `Listening on 1090 MHz · ${d.good} messages` : "Starting…";
+  rows.push(head(`Aircraft · ${d.aircraft.length}`, terrain.aircraft ? "Hide on map" : "Show on map", () => toggleLayer("aircraft")));
+  rows.push(note(state));
+  for (const p of d.aircraft) {
+    const b = document.createElement("div");
+    b.className = "list-item media-row" + (p.emergency || /^7(500|600|700)$/.test(p.squawk || "") ? " playing" : "");
+    b.innerHTML = `<span class="thumb"><svg style="transform: rotate(${p.track ?? 0}deg)"><use href="#i-plane"/></svg></span><span class="txt"><span class="t"></span><span class="s"></span></span><span class="sat-el"></span>`;
+    b.querySelector(".t").textContent = `${p.call || p.icao}${p.squawk && /^7(500|600|700)$/.test(p.squawk) ? ` · squawk ${p.squawk}` : ""}`;
+    b.querySelector(".s").textContent = [p.alt_ft != null ? altText(p.alt_ft) : "", p.kt != null ? `${settings.units === "imperial" ? Math.round(p.kt * 1.15078) + " mph" : Math.round(p.kt * 1.852) + " km/h"}` : "",
+      p.track != null ? `heading ${cardinal(p.track)}` : "", p.vr ? (p.vr > 300 ? "climbing" : p.vr < -300 ? "descending" : "") : "", `ICAO ${p.icao}`].filter(Boolean).join(" · ");
+    b.querySelector(".sat-el").textContent = p.km != null ? distText(p.km * 1000) : "no position";
+    if (p.lat != null) b.onclick = () => { showView("home"); setFollow(false); map.easeTo({ center: [p.lon, p.lat], zoom: 10 }); if (!terrain.aircraft) toggleLayer("aircraft"); };
+    rows.push(b);
+  }
+  if (!d.aircraft.length && d.running) rows.push(note("Nothing heard yet. Planes show up within a minute in range of the antenna: pull the Nooelec's whip out to about 6.9 cm and mount it high, or use a 1090 MHz antenna."));
+  rows.push(meshToggleLike("Keep receiving in the background", "Track aircraft with the screen elsewhere (the radio still wins the SDR)", d.always,
+    async () => { air.data = await api("/api/adsb", { json: { always: !d.always } }); renderRadio(); }));
+  return rows;
+}
+function meshToggleLike(title, sub, on, onclick) {
+  const b = document.createElement("button");
+  b.className = "list-item media-row";
+  b.innerHTML = `<span class="txt"><span class="t"></span><span class="s"></span></span><span class="switch${on ? " on" : ""}"></span>`;
+  b.querySelector(".t").textContent = title;
+  b.querySelector(".s").textContent = sub;
+  b.onclick = onclick;
+  return b;
+}
+// "truck, what plane is that?": the closest one
+async function airSay() {
+  const d = await api("/api/adsb").catch(() => null);
+  const p = d?.aircraft.find((x) => x.km != null);
+  if (!d?.running && !d?.aircraft.length) { const m = d?.busy ? "The radio is using the SDR right now" : "The aircraft receiver isn't running"; say(m); return m; }
+  if (!p) { say("I don't hear any aircraft nearby"); return "No aircraft nearby"; }
+  const msg = `${p.call ? p.call.replace(/([A-Z]+)(\d+)/, "$1 $2") : "An aircraft"}, ${distText(p.km * 1000).replace("mi", "miles").replace("km", "kilometers")} away` +
+    `${p.alt_ft != null ? ` at ${p.alt_ft >= 18000 ? `flight level ${Math.round(p.alt_ft / 100)}` : `${Math.round(p.alt_ft / 100) * 100} feet`}` : ""}` +
+    `${p.track != null ? `, heading ${({ N: "north", NE: "northeast", E: "east", SE: "southeast", S: "south", SW: "southwest", W: "west", NW: "northwest" })[cardinal(p.track)]}` : ""}`;
+  say(msg);
+  return msg;
+}
+
+
+// ---- fuel: weekly average prices (EIA), fill-ups, and what you paid at each station (fuel.py) ----
+let fuelInfo = null;
+async function loadFuel() {
+  fuelInfo = await api("/api/fuel").catch(() => fuelInfo);
+  if (currentView === "vehicle") renderFuel();
+}
+const money = (v, d = 2) => v == null ? "--" : `$${v.toFixed(d)}`;
+function renderFuel() {
+  const f = fuelInfo, box = $("#fuel-kv");
+  if (!f || !box) return;
+  const rows = [];
+  const pr = f.prices || {};
+  if (pr.areas?.length) {
+    for (const prod of ["Regular", "Diesel"]) {
+      const cells = pr.areas.filter((a) => a.products[prod]).map((a) => {
+        const x = a.products[prod];
+        const ch = x.change ? ` <small class="${x.change > 0 ? "up" : "down"}">${x.change > 0 ? "▲" : "▼"}${Math.abs(Math.round(x.change * 100))}¢</small>` : "";
+        return `<span><b>${money(x.price)}</b>${ch} ${escapeHtml(a.name)}</span>`;
+      });
+      if (cells.length) rows.push(`<div class="fuel-row"><em>${prod}</em>${cells.join("")}</div>`);
+    }
+    rows.push(`<div class="fuel-note">Weekly averages (EIA), week of ${escapeHtml(pr.areas[0].products.Regular?.week || "")}${pr.stale ? " · offline: last copy" : ""}</div>`);
+  } else rows.push(`<div class="fuel-note">${escapeHtml(pr.error || "No average prices yet")}</div>`);
+  rows.push(`<div class="fuel-row totals"><span>${f.avg_mpg ? `<b>${econText(f.avg_mpg)}</b> from fill-ups` : "Log two full tanks for the real mpg"}</span>
+    <span><b>${money(f.spent_30d)}</b> last 30 days</span><button class="btn" data-action="fuel-add">Log fill-up</button></div>`);
+  for (const x of f.fillups.slice(0, 4)) {
+    rows.push(`<div class="fuel-fill"><span>${new Date(x.t * 1000).toLocaleDateString([], { month: "short", day: "numeric" })}</span>
+      <span>${x.gallons} gal · ${money(x.price, 3)}${x.station?.name ? ` · ${escapeHtml(x.station.name)}` : ""}</span>
+      <span>${x.mpg ? econText(x.mpg) : x.full ? "" : "partial"}</span>
+      <button class="icon-btn small" data-action="fuel-del" data-id="${x.id}" aria-label="Delete"><svg><use href="#i-close"/></svg></button></div>`);
+  }
+  box.innerHTML = rows.join("");
+}
+// "18.5 3.89" = gallons and price a gallon; "18.5 $70.12" (or a second number over 20) = gallons and the total
+async function logFill(text) {
+  const nums = (text.match(/\$?\d+(?:\.\d+)?/g) || []);
+  if (nums.length < 2) return toast("Type the gallons and the price, like 18.5 3.89");
+  const gallons = parseFloat(nums[0].replace("$", "")), second = nums[1];
+  const v = parseFloat(second.replace("$", ""));
+  const isTotal = v > 15;  // no gallon costs that much: it's the total
+  const station = await nearestStation();
+  try {
+    fuelInfo = await api("/api/fuel/add", { json: { gallons, [isTotal ? "total" : "price"]: v, full: !/partial|not full/.test(text), station } });
+    const a = fuelInfo.added;
+    toast(`Logged ${a.gallons} gal at ${money(a.price, 3)} (${money(a.total)})${station ? ` at ${station.name}` : ""}`, 5000);
+    renderFuel();
+    return a;
+  } catch (e) { toast(e.message); }
+}
+async function nearestStation() {  // the gas station the truck is at (within 150 m), from the offline search
+  const p = lastState?.position || lastPos;
+  if (!p) return null;
+  const { results = [] } = await api(`/api/search?q=gas&lat=${p.lat}&lon=${p.lon}`).catch(() => ({}));
+  const r = results.find((x) => haversine(p.lat, p.lon, x.lat, x.lon) < 150);
+  return r ? { name: r.name, lat: r.lat, lon: r.lon } : null;
+}
+function paidAt(d) {  // what you last paid at this station, for the search results
+  const s = (fuelInfo?.stations || []).find((x) => haversine(d.lat, d.lon, x.lat, x.lon) < 100);
+  return s ? `You paid ${money(s.price, 3)} · ${agoText(s.t)}` : "";
+}
+async function fuelSay() {
+  await loadFuel();
+  const pr = fuelInfo?.prices?.areas || [];
+  const reg = pr.map((a) => a.products.Regular ? `${a.name} ${a.products.Regular.price.toFixed(2)}` : "").filter(Boolean);
+  const last = fuelInfo?.fillups?.[0];
+  const msg = [reg.length ? `Regular averages ${reg.join(", ")} dollars a gallon` : fuelInfo?.prices?.error ? "I don't have average prices: add an EIA key to the config" : "",
+    last ? `You last paid ${last.price.toFixed(2)}${last.station?.name ? ` at ${last.station.name}` : ""}, ${agoText(last.t)}` : ""].filter(Boolean).join(". ") || "No fuel prices yet";
+  say(msg);
+  return msg;
+}
+
 // ---- live state ----
 let lastState = null;
 function onState(s) {
@@ -3060,6 +3236,15 @@ async function runCommand(raw, fromModel = false) {
     say(msg);
     return msg;
   }
+  if (/what (plane|aircraft|airplane|jet) is that|(planes?|aircraft|airplanes?) (overhead|nearby|above)|what'?s flying/.test(text)) return airSay();
+  // (the raw words: the normalized text has lost the decimal points)
+  if ((m = raw.toLowerCase().match(/(?:put in|got|filled up(?: with)?|pumped|bought) (\d+(?:\.\d+)?) gallons?(?: of \w+)? (?:at|for) \$?(\d+(?:\.\d+)?)/))) {
+    const a = await logFill(`${m[1]} ${m[2]}`);
+    const msg = a ? `Logged ${a.gallons} gallons, ${a.total.toFixed(2)} dollars` : "Couldn't log that";
+    say(msg);
+    return msg;
+  }
+  if (/(gas|fuel|diesel) prices?|price of (gas|fuel|diesel)|how much is (gas|fuel|diesel)/.test(text)) return fuelSay();
   if (/speed limit/.test(text)) {
     const r = lastState?.road, imp = settings.units === "imperial";
     const msg = !r ? "I don't know which road we're on" : !r.limit_kmh ? `No speed limit mapped for ${r.road || "this road"}`
@@ -3159,6 +3344,8 @@ const ACTIONS = {
   "np-add": () => { const t = curTrack(); if (t) openSaveSheet([media.idIndex.get(t.id)]); else toast("Nothing playing"); },
   "pl-close": () => ($("#pl-sheet").hidden = true),
   "news-refresh": () => loadNews(true),
+  "fuel-add": () => { kbLayer = "num"; openSearch("", "fuel"); },
+  "fuel-del": async (btn) => { if (!confirm("Delete this fill-up?")) return; fuelInfo = { ...fuelInfo, ...(await api("/api/fuel/delete", { json: { id: btn.dataset.id } })) }; renderFuel(); },
   "trip-reset": async (btn) => { if (!confirm(`Reset trip ${btn.dataset.trip.toUpperCase()}?`)) return; tripInfo = await api("/api/trip/reset", { json: { which: btn.dataset.trip } }); renderTrip(); },
   "odo-set": () => { kbLayer = "num"; openSearch("", "odo"); },
   "oil-done": async () => {

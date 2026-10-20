@@ -65,6 +65,18 @@ CHANNELS = [
 GROUPS = {"weather": "Weather radio", "ems": "EMS & fire", "marine": "Marine", "air": "Air", "ham": "Ham & GMRS"}
 
 
+# Other programs that use the dongle in the background (adsb.stop): they let go before anything here tunes it, and
+# stay off it until SDR_HOLD has passed (a scan or the start of a capture isn't "tuned" yet).
+SDR_USERS = []
+SDR_HOLD = [0.0]
+
+
+def release_sdr(hold_s=10):
+    SDR_HOLD[0] = max(SDR_HOLD[0], time.time() + hold_s)
+    for stop in SDR_USERS:
+        stop()
+
+
 def sdr_present():
     for d in pathlib.Path("/sys/bus/usb/devices").glob("*"):
         try:
@@ -98,6 +110,7 @@ class Tuner:
         if not shutil.which("rtl_fm"):
             raise OSError("rtl-sdr isn't installed (sudo apt install rtl-sdr)")
         freqs = [int(f) for f in freqs][:32]
+        release_sdr()
         cmd = ["rtl_fm", *MODES[mode], *[a for f in freqs for a in ("-f", str(f))], "-r", "48000",
                "-l", str(int(squelch or (60 if len(freqs) > 1 else 0))), "-"]
         enc = ["ffmpeg", "-v", "error", "-f", "s16le", "-ar", "48000", "-ac", "1", "-i", "-",
@@ -137,6 +150,7 @@ def fm_scan():
     if not sdr_present():
         raise OSError("SDR not connected: plug in the Nooelec v5")
     tuner.stop()
+    release_sdr(hold_s=75)
     out = subprocess.run(["rtl_power", "-f", "87.8M:108M:25k", "-i", "2", "-1", "-g", "30"],
                          capture_output=True, text=True, timeout=60).stdout
     power = {}
@@ -442,6 +456,7 @@ class Capture:
         self.stopping.clear()
         self.state = {"state": "capturing", "pass": p, "id": folder.name}
         tuner.stop()
+        release_sdr()
         try:
             secs = max(10, los + 20 - time.time())
             if p["mode"] == "lrpt":

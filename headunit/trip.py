@@ -24,7 +24,7 @@ def _blank_trip():
 
 
 def _load():
-    d = {"odo_km": None, "trips": {"a": _blank_trip(), "b": _blank_trip()}, "oil_at_km": None,
+    d = {"odo_km": None, "total_km": 0.0, "trips": {"a": _blank_trip(), "b": _blank_trip()}, "oil_at_km": None,
          "oil_every_km": 5000 * KM_PER_MI}
     try:
         d.update(json.loads(FILE.read_text()))
@@ -43,6 +43,13 @@ def _save():
     tmp = FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(_d))
     tmp.replace(FILE)
+
+
+def distance_km():
+    """(km counted since NOMAD started counting, the odometer in km or None). Fill-ups compare the first: it never
+    jumps, even when the odometer is set in between."""
+    with _lock:
+        return _d.get("total_km", 0.0), _d["odo_km"]
 
 
 def status():
@@ -136,6 +143,7 @@ def trip_loop(position):
                     t["moving_s"] += dt
             if _d["odo_km"] is not None:
                 _d["odo_km"] += km
+            _d["total_km"] = _d.get("total_km", 0.0) + km  # always counts (fill-ups use it, odometer set or not)
             if now - _dirty[0] > 30:
                 _dirty[0] = now
                 _save()
