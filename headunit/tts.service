@@ -1,0 +1,15 @@
+[Unit]
+Description=Head unit text to speech (Kokoro, voice Bella) on 127.0.0.1:5002
+After=network.target
+
+[Service]
+ExecStart=/home/k/.venvs/kokoro/bin/python /opt/headunit/tts_server.py
+Restart=always
+RestartSec=5
+User=k
+# ONNX Runtime uses every core by default; two keep the burst within what the car supply delivers.
+CPUAffinity=0 1
+Nice=-2
+
+[Install]
+WantedBy=multi-user.target

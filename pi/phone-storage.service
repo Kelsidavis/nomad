@@ -1,0 +1,17 @@
+[Unit]
+Description=Mount the phone's storage at /mnt/phone (WebDAV via rclone)
+After=dashlink-adb.service
+Wants=dashlink-adb.service
+
+[Service]
+Type=notify
+Environment=RCLONE_CONFIG_PHONE_TYPE=webdav
+Environment=RCLONE_CONFIG_PHONE_URL=http://127.0.0.1:8780/files
+ExecStartPre=/bin/mkdir -p /mnt/phone
+ExecStart=/usr/bin/rclone mount phone: /mnt/phone --vfs-cache-mode writes --dir-cache-time 5s --allow-other
+ExecStop=/bin/fusermount -u /mnt/phone
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

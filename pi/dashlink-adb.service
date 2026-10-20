@@ -1,0 +1,13 @@
+[Unit]
+Description=DashLink USB link to the phone (adb forward)
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/dashlink-adb.sh
+Restart=always
+RestartSec=5
+# adb keeps its keys in $HOME/.android; run as the user who authorized the phone.
+User=pi
+
+[Install]
+WantedBy=multi-user.target

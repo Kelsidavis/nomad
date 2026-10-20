@@ -1,0 +1,19 @@
+[Unit]
+Description=Valhalla offline routing for the head unit (127.0.0.1:8002)
+After=docker.service
+Requires=docker.service
+# Routing data from offline-build (see README); without it the head unit routes online.
+ConditionPathExists=/home/k/.local/share/headunit/valhalla/valhalla_tiles.tar
+
+[Service]
+ExecStartPre=-/usr/bin/docker rm -f valhalla
+# --pull never: in the car there's no internet, so only ever use the image already on the Pi.
+ExecStart=/usr/bin/docker run --rm --pull never --name valhalla -p 127.0.0.1:8002:8002 \
+    -v /home/k/.local/share/headunit/valhalla:/data:ro ghcr.io/valhalla/valhalla:3.9.1 \
+    valhalla_service /data/valhalla.json 2
+ExecStop=/usr/bin/docker stop valhalla
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

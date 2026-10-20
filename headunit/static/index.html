@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>NOMAD</title>
+<link rel="stylesheet" href="vendor/maplibre/maplibre-gl.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M12 3 2 12h3v8h5v-6h4v6h5v-8h3z"/></symbol>
+  <symbol id="i-music" viewBox="0 0 24 24"><path d="M12 3v10.55A4 4 0 1 0 14 17V7h4V3z"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11z"/></symbol>
+  <symbol id="i-car" viewBox="0 0 24 24"><path d="M18.9 6a1.5 1.5 0 0 0-1.4-1h-11a1.5 1.5 0 0 0-1.4 1L3 12v8a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h12v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-8zM6.5 16A1.5 1.5 0 1 1 8 14.5 1.5 1.5 0 0 1 6.5 16zm11 0a1.5 1.5 0 1 1 1.5-1.5 1.5 1.5 0 0 1-1.5 1.5zM5 11l1.5-4.5h11L19 11z"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3h-4l-.4 2.9a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1L11 21h4l.4-2.9a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5zM13 15.5a3.5 3.5 0 1 1 3.5-3.5 3.5 3.5 0 0 1-3.5 3.5z"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="m6 18 8.5-6L6 6zM16 6v12h2V6z"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></symbol>
+  <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z"/></symbol>
+  <symbol id="i-repeat-one" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2zm-4-2V9h-1l-2 1v1h1.5v4z"/></symbol>
+  <symbol id="i-film" viewBox="0 0 24 24"><path d="m18 4 2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V4z"/></symbol>
+  <symbol id="i-person" viewBox="0 0 24 24"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4zm0 2c-2.7 0-8 1.3-8 4v2h16v-2c0-2.7-5.3-4-8-4z"/></symbol>
+  <symbol id="i-radio" viewBox="0 0 24 24"><path d="M3.2 6.2A2 2 0 0 0 2 8v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2H8.3l8.3-3.3L15.9 1zM7 20a3 3 0 1 1 3-3 3 3 0 0 1-3 3zm13-8h-2v-2h-2v2H4V8h16z"/></symbol>
+  <symbol id="i-sat" viewBox="0 0 24 24"><path d="m12.4 4.6 2.8-2.8 4.2 4.2-2.8 2.8zm-8 8 2.8-2.8 4.2 4.2-2.8 2.8zm4.3-2.1 3.5-3.5 4.2 4.2-3.5 3.5zM15 21v-2a4 4 0 0 0 4-4h2a6 6 0 0 1-6 6zm0-4v-2h2a2 2 0 0 1-2 2z"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M19.4 10A7.5 7.5 0 0 0 5.4 8 6 6 0 0 0 6 20h13a5 5 0 0 0 .4-10z"/></symbol>
+  <symbol id="i-fav" viewBox="0 0 24 24"><path d="M12 17.3 18.2 21l-1.6-7L22 9.2l-7.2-.6L12 2 9.2 8.6 2 9.2 7.5 14l-1.7 7z"/></symbol>
+  <symbol id="i-mute" viewBox="0 0 24 24"><path d="M16.5 12A4.5 4.5 0 0 0 14 8v2.2l2.5 2.4v-.6zm2.5 0a6.9 6.9 0 0 1-.5 2.6l1.5 1.5A8.8 8.8 0 0 0 21 12a9 9 0 0 0-7-8.8v2.1a7 7 0 0 1 5 6.7zM4.3 3 3 4.3 7.7 9H3v6h4l5 5v-6.7l4.3 4.2a7 7 0 0 1-2.3 1.2v2.1a9 9 0 0 0 3.7-1.8l2 2 1.3-1.3-9-9zM12 4 9.9 6.1 12 8.2z"/></symbol>
+  <symbol id="i-mountain" viewBox="0 0 24 24"><path d="m14 6-3.8 5 2.9 3.8-1.6 1.2L7 10l-6 8h22z"/></symbol>
+  <symbol id="i-contour" viewBox="0 0 24 24"><path d="M12 3C7 3 3 7 3 12s4 9 9 9 9-4 9-9-4-9-9-9zm0 16a7 7 0 1 1 7-7 7 7 0 0 1-7 7zm0-12a5 5 0 1 0 5 5 5 5 0 0 0-5-5zm0 8a3 3 0 1 1 3-3 3 3 0 0 1-3 3z"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM7 9h10v2H7zm6 5H7v-2h6zm4-6H7V6h10z"/></symbol>
+  <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9zm3-19a7 7 0 0 0-4 12.7V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.3A7 7 0 0 0 12 2z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></symbol>
+  <symbol id="i-eq" viewBox="0 0 24 24"><path d="M7 18h2V6H7zm4 4h2V2h-2zm-8-8h2v-4H3zm12 4h2V6h-2zm4-8v4h2v-4z"/></symbol>
+  <symbol id="i-chev-left" viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4-4.6-4.6z"/></symbol>
+  <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M10.6 9.2 5.4 4 4 5.4l5.2 5.2zM14.5 4l2 2L4 18.6 5.4 20 17.9 7.5l2.1 2V4zm.3 9.4-1.4 1.4 3.1 3.1L14.5 20H20v-5.5l-2 2z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M19 13H5v-2h14z"/></symbol>
+  <symbol id="i-locate" viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 4 4 4 4 0 0 0-4-4zm9 3h-2.1A7 7 0 0 0 13 5.1V3h-2v2.1A7 7 0 0 0 5.1 11H3v2h2.1a7 7 0 0 0 5.9 5.9V21h2v-2.1a7 7 0 0 0 5.9-5.9H21zm-9 6a5 5 0 1 1 5-5 5 5 0 0 1-5 5z"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4l5.6 5.6L5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6z"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M22 3H7a2 2 0 0 0-1.6.9L0 12l5.4 8.1A2 2 0 0 0 7 21h15a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-3 12.6L17.6 17 14 13.4 10.4 17 9 15.6l3.6-3.6L9 8.4 10.4 7l3.6 3.6L17.6 7 19 8.4 15.4 12z"/></symbol>
+  <symbol id="i-gps" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 14.5 9 2.5 2.5 0 0 1 12 11.5z"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M16 1H8a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2zm-4 21a1.5 1.5 0 1 1 1.5-1.5A1.5 1.5 0 0 1 12 22zm4-4H8V4h8z"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M14.4 6 14 4H5v17h2v-7h5.6l.4 2h7V6z"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.9 3.9.1.1 4-4H6a7 7 0 1 1 2.1 5l-1.4 1.4A9 9 0 1 0 13 3zm-1 5v5l4.3 2.5.7-1.2-3.5-2.1V8z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><path d="M18 8h-1V6A5 5 0 0 0 7 6v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2zm-6 9a2 2 0 1 1 2-2 2 2 0 0 1-2 2zm3.1-9H8.9V6a3.1 3.1 0 0 1 6.2 0z"/></symbol>
+  <symbol id="i-volume" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 16.5-7.4-5.7L3 12l9 7 9-7-1.6-1.2zM12 14l7.4-5.7L21 7l-9-7-9 7 1.6 1.3z"/></symbol>
+  <symbol id="i-turn" viewBox="0 0 48 48"><path d="M24 4 12 18h8v26h8V18h8z"/></symbol>
+  <symbol id="i-uturn" viewBox="0 0 48 48"><path d="M14 44V18a10 10 0 0 1 20 0v10h7l-11 12-11-12h7V18a2 2 0 0 0-4 0v26z"/></symbol>
+  <symbol id="i-roundabout" viewBox="0 0 48 48"><path d="M24 4 14 15h7v6.2A9 9 0 1 0 33 30h-4a5 5 0 1 1-8-4v18h6V15h7z"/></symbol>
+</svg>
+
+<div id="app">
+  <nav id="rail">
+    <div id="clock">--:--</div>
+    <button class="rail-btn active" data-view="home" aria-label="Home"><svg><use href="#i-home"/></svg></button>
+    <button class="rail-btn" data-view="media" aria-label="Media"><svg><use href="#i-music"/></svg></button>
+    <button class="rail-btn" data-view="radio" aria-label="Radio"><svg><use href="#i-radio"/></svg></button>
+    <button class="rail-btn" data-view="assistant" aria-label="Assistant"><svg><use href="#i-chat"/></svg></button>
+    <button class="rail-btn" data-view="cameras" aria-label="Cameras"><svg><use href="#i-camera"/></svg></button>
+    <button class="rail-btn" data-view="vehicle" aria-label="Vehicle"><svg><use href="#i-car"/></svg></button>
+    <button class="rail-btn" data-view="settings" aria-label="Settings"><svg><use href="#i-settings"/></svg></button>
+    <div class="rail-spacer"></div>
+    <div id="status-icons">
+      <svg id="st-gps" class="st off"><title>GPS</title><use href="#i-gps"/></svg>
+      <svg id="st-phone" class="st off"><title>Phone</title><use href="#i-phone"/></svg>
+      <svg id="st-power" class="st warn" hidden><title>Under-voltage</title><use href="#i-bolt"/></svg>
+    </div>
+    <button id="mic-btn" class="rail-btn mic" aria-label="Voice"><svg><use href="#i-mic"/></svg></button>
+  </nav>
+
+  <section id="panel">
+    <!-- Home: navigation, now playing, quick vehicle -->
+    <div class="view active" id="view-home">
+      <div class="card nav-card" id="nav-card" data-fold="places">
+        <div class="nav-idle">
+          <button class="fold-btn" aria-label="Fold"><svg><use href="#i-chev-left"/></svg></button>
+          <button class="search-bar" data-action="search"><svg><use href="#i-search"/></svg><span>Where to?</span></button>
+          <div class="recents" id="recents"></div>
+        </div>
+        <div class="nav-preview" hidden>
+          <div class="eyebrow">Route</div>
+          <div class="dest-name" id="pv-name"></div>
+          <div class="route-sum"><b id="pv-time"></b> · <span id="pv-dist"></span></div>
+          <div class="btn-row">
+            <button class="btn primary" data-action="nav-start">Start</button>
+            <button class="btn" data-action="nav-cancel">Cancel</button>
+            <button class="btn" data-action="set-home"><svg><use href="#i-home"/></svg>Set as home</button>
+          </div>
+        </div>
+        <div class="nav-active" hidden>
+          <div class="maneuver">
+            <svg class="man-icon" id="man-icon"><use href="#i-turn"/></svg>
+            <div>
+              <div class="man-dist" id="man-dist"></div>
+              <div class="man-text" id="man-text"></div>
+            </div>
+          </div>
+          <div class="nav-then" id="nav-then"></div>
+          <div class="nav-foot">
+            <div><b id="nav-eta"></b><span>arrival</span></div>
+            <div><b id="nav-left-time"></b><span>left</span></div>
+            <div><b id="nav-left-dist"></b><span id="nav-left-unit"></span></div>
+            <button class="icon-btn" id="mute-btn" data-action="voice-mute" aria-label="Mute directions"><svg><use href="#i-volume"/></svg></button>
+            <button class="btn danger" data-action="nav-cancel">End</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card media-card" data-fold="music">
+        <canvas class="viz wide"></canvas>
+        <button class="fold-btn" aria-label="Fold"><svg><use href="#i-chev-left"/></svg></button>
+        <div class="art" data-art data-action="np-open"><svg class="ph"><use href="#i-music"/></svg></div>
+        <div class="media-info">
+          <div class="track-title" data-bind="track-title">Nothing playing</div>
+          <div class="track-sub" data-bind="track-sub">Tap Media to choose music</div>
+          <div class="progress"><div data-bind="track-progress"></div></div>
+        </div>
+        <div class="media-ctrls">
+          <button class="icon-btn" data-action="prev"><svg><use href="#i-prev"/></svg></button>
+          <button class="icon-btn big" data-action="playpause"><svg><use href="#i-play" data-bind="play-icon"/></svg></button>
+          <button class="icon-btn" data-action="next"><svg><use href="#i-next"/></svg></button>
+        </div>
+      </div>
+
+      <div class="card quick-card" data-fold="stats">
+        <button class="fold-btn" aria-label="Fold"><svg><use href="#i-chev-left"/></svg></button>
+        <div><b data-bind="speed">--</b><span data-bind="speed-unit">mph</span></div>
+        <div><b data-bind="heading">--</b><span>heading</span></div>
+        <div><b data-bind="altitude">--</b><span data-bind="alt-unit">ft</span></div>
+        <div><b data-bind="sats">--</b><span>satellites</span></div>
+      </div>
+    </div>
+
+    <!-- Media library -->
+    <div class="view" id="view-media">
+      <div class="media-layout">
+        <section class="player">
+          <div class="player-art" data-art data-action="np-open">
+            <svg class="ph"><use href="#i-music"/></svg>
+            <canvas class="viz"></canvas>
+            <button class="viz-btn" data-action="viz-cycle" aria-label="Visualizer style"><svg><use href="#i-eq"/></svg></button>
+          </div>
+          <div class="player-info">
+            <div class="np-text" data-action="player-toggle">
+              <div class="track-title" data-bind="track-title">Nothing playing</div>
+              <div class="track-sub" data-bind="track-sub"></div>
+            </div>
+            <div class="seek" id="seek"><div class="progress"><div data-bind="track-progress"></div></div></div>
+            <div class="times"><span data-bind="t-cur">0:00</span><span data-bind="t-dur">0:00</span></div>
+            <div class="media-ctrls">
+              <button class="icon-btn" data-action="shuffle" id="shuffle-btn" aria-label="Shuffle"><svg><use href="#i-shuffle"/></svg></button>
+              <button class="icon-btn" data-action="prev" aria-label="Previous"><svg><use href="#i-prev"/></svg></button>
+              <button class="icon-btn big" data-action="playpause" aria-label="Play or pause"><svg><use href="#i-play" data-bind="play-icon"/></svg></button>
+              <button class="icon-btn" data-action="next" aria-label="Next"><svg><use href="#i-next"/></svg></button>
+              <button class="icon-btn" data-action="repeat" id="repeat-btn" aria-label="Repeat"><svg><use href="#i-repeat"/></svg></button>
+            </div>
+            <label class="volume"><svg><use href="#i-volume"/></svg><input type="range" min="0" max="100" data-bind="volume"></label>
+          </div>
+        </section>
+        <section class="browser">
+          <div class="media-tabs" id="media-tabs">
+            <button data-tab="artists">Artists</button><button data-tab="albums">Albums</button>
+            <button data-tab="songs">Songs</button><button data-tab="videos">Videos</button>
+            <button class="icon-btn" data-action="media-search" aria-label="Search music"><svg><use href="#i-search"/></svg></button>
+          </div>
+          <div class="media-crumb" id="media-crumb" hidden>
+            <button class="icon-btn" data-action="media-back" aria-label="Back"><svg><use href="#i-chev-left"/></svg></button>
+            <span id="crumb-title"></span>
+            <button class="btn" data-action="media-shuffle" id="crumb-shuffle"><svg><use href="#i-shuffle"/></svg>Shuffle</button>
+            <button class="btn primary" data-action="media-play" id="crumb-play"><svg><use href="#i-play"/></svg>Play</button>
+          </div>
+          <div class="list vlist" id="media-list"><div class="empty">Loading…</div></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Radio: the SDR (FM, AM, NOAA weather, scanner, satellites) -->
+    <div class="view" id="view-radio">
+      <div class="card radio-now">
+        <div class="radio-dial">
+          <button class="icon-btn" data-action="radio-down" aria-label="Tune down"><svg><use href="#i-minus"/></svg></button>
+          <div class="radio-freq" data-action="radio-enter"><b id="radio-freq">--</b><span id="radio-unit">MHz</span></div>
+          <button class="icon-btn" data-action="radio-up" aria-label="Tune up"><svg><use href="#i-plus"/></svg></button>
+        </div>
+        <div class="radio-meta"><div class="track-title" id="radio-label">Not tuned</div><div class="track-sub" id="radio-sub"></div></div>
+        <div class="radio-btns">
+          <button class="icon-btn" data-action="radio-preset" id="radio-star" aria-label="Save preset"><svg><use href="#i-fav"/></svg></button>
+          <button class="icon-btn big" data-action="radio-toggle" aria-label="Play or stop"><svg><use href="#i-play" id="radio-play-icon"/></svg></button>
+        </div>
+        <div class="radio-warn" id="radio-warn" hidden></div>
+      </div>
+      <div class="media-tabs" id="radio-tabs">
+        <button data-tab="fm">FM</button><button data-tab="am">AM</button><button data-tab="weather">Weather</button>
+        <button data-tab="scanner">Scanner</button><button data-tab="sats">Satellites</button>
+      </div>
+      <div class="list" id="radio-list"><div class="empty">Loading…</div></div>
+    </div>
+
+    <!-- Assistant: talk to Gemma directly -->
+    <div class="view" id="view-assistant">
+      <div class="view-head"><h2>Assistant</h2>
+        <div class="chat-tools">
+          <button class="btn" id="chat-think" data-action="chat-think"><svg><use href="#i-bulb"/></svg>Think</button>
+          <button class="btn" id="chat-speak" data-action="chat-speak"><svg><use href="#i-volume"/></svg>Read aloud</button>
+          <button class="icon-btn" data-action="chat-clear" aria-label="New conversation"><svg><use href="#i-close"/></svg></button>
+        </div>
+      </div>
+      <div class="chat" id="chat-log"></div>
+      <div class="chat-input">
+        <button class="icon-btn big" data-action="chat-mic" aria-label="Talk"><svg><use href="#i-mic"/></svg></button>
+        <button class="chat-field" data-action="chat-type">Ask anything…</button>
+        <button class="btn danger" id="chat-stop" data-action="chat-stop" hidden>Stop</button>
+      </div>
+    </div>
+
+    <!-- Phone cameras and dashcam -->
+    <div class="view" id="view-cameras">
+      <div class="view-head"><h2>Cameras</h2></div>
+      <div class="cam-grid">
+        <figure class="cam" data-cam="2"><img alt=""><figcaption>Road (wide)</figcaption><div class="cam-msg"></div></figure>
+        <figure class="cam" data-cam="1"><img alt=""><figcaption>Cabin</figcaption><div class="cam-msg"></div></figure>
+      </div>
+      <div class="card dashcam-card">
+        <div>
+          <div class="eyebrow">Dashcam</div>
+          <div class="dc-state" id="dc-state">Phone not connected</div>
+          <div class="dc-sub" id="dc-sub"></div>
+        </div>
+        <button class="btn primary" data-action="dashcam-lock"><svg><use href="#i-lock"/></svg>Save clip</button>
+      </div>
+      <p class="hint">The phone can run two cameras at once. While the dashcam records two, live view shows the recording feeds.</p>
+    </div>
+
+    <!-- Vehicle and system -->
+    <div class="view" id="view-vehicle">
+      <div class="view-head"><h2>Vehicle</h2></div>
+      <div class="gauges">
+        <div class="gauge">
+          <canvas id="compass" width="240" height="240"></canvas>
+          <div class="gauge-label"><b data-bind="speed">--</b> <span data-bind="speed-unit">mph</span></div>
+        </div>
+        <div class="gauge">
+          <canvas id="gmeter" width="240" height="240"></canvas>
+          <div class="gauge-label"><b id="g-total">--</b> g</div>
+        </div>
+        <div class="gauge">
+          <canvas id="skyplot" width="240" height="240"></canvas>
+          <div class="gauge-label"><b id="sky-count">--</b> satellites</div>
+        </div>
+      </div>
+      <div class="kv" id="vehicle-kv"></div>
+    </div>
+
+    <!-- Settings -->
+    <div class="view" id="view-settings">
+      <div class="view-head"><h2>Settings</h2></div>
+      <div class="setting">
+        <span>Units</span>
+        <div class="seg" data-setting="units"><button data-v="imperial">mph</button><button data-v="metric">km/h</button></div>
+      </div>
+      <div class="setting">
+        <span>Theme</span>
+        <div class="seg" data-setting="theme"><button data-v="auto">Auto</button><button data-v="dark">Dark</button><button data-v="light">Light</button></div>
+      </div>
+      <div class="setting">
+        <span>Map while navigating</span>
+        <div class="seg" data-setting="orient"><button data-v="heading">Heading up</button><button data-v="north">North up</button></div>
+      </div>
+      <div class="setting">
+        <span>Clock</span>
+        <div class="seg" data-setting="clock"><button data-v="12">12 h</button><button data-v="24">24 h</button></div>
+      </div>
+      <div class="setting">
+        <span>Bluetooth<small id="bt-state">…</small></span>
+        <div class="btn-row"><button class="btn primary" id="bt-pair" data-action="bt-pair">Pair a phone</button>
+          <button class="btn" id="bt-forget" data-action="bt-forget" hidden>Forget</button></div>
+      </div>
+      <div class="setting">
+        <span>Home<small id="home-addr">Not set</small></span>
+        <div class="btn-row"><button class="btn" data-action="home-here">Use current location</button>
+          <button class="btn" id="home-clear" data-action="home-clear" hidden>Clear</button></div>
+      </div>
+      <div class="setting">
+        <span>Voice</span>
+        <div class="seg" data-setting="voice"><button data-v="af_bella">Bella</button><button data-v="af_sky">Sky</button></div>
+      </div>
+      <div class="setting">
+        <span>Speak through</span>
+        <div class="seg" data-setting="speakOn"><button data-v="truck">Truck speakers</button><button data-v="here">This screen</button></div>
+      </div>
+      <div class="setting">
+        <span>Spoken directions</span>
+        <div class="seg" data-setting="prompts"><button data-v="on">On</button><button data-v="off">Off</button></div>
+      </div>
+      <div class="setting stack">
+        <span>Accent color</span>
+        <div class="seg swatches" data-setting="accent">
+          <button data-v="blue" aria-label="Blue"><i style="background:#4c8dff"></i></button>
+          <button data-v="teal" aria-label="Teal"><i style="background:#14b8a6"></i></button>
+          <button data-v="green" aria-label="Green"><i style="background:#22c55e"></i></button>
+          <button data-v="orange" aria-label="Orange"><i style="background:#f59e0b"></i></button>
+          <button data-v="red" aria-label="Red"><i style="background:#ef4444"></i></button>
+          <button data-v="purple" aria-label="Purple"><i style="background:#a855f7"></i></button>
+          <button data-v="pink" aria-label="Pink"><i style="background:#ec4899"></i></button>
+          <button data-v="album">Album</button>
+        </div>
+      </div>
+      <div class="setting stack">
+        <span>Visualizer</span>
+        <div class="seg" data-setting="viz"><button data-v="bars">Bars</button><button data-v="mirror">Mirror</button><button data-v="wave">Wave</button><button data-v="scope">Scope</button><button data-v="ring">Ring</button><button data-v="off">Off</button></div>
+      </div>
+      <div class="setting stack">
+        <span>Visualizer color</span>
+        <div class="seg" data-setting="vizColor"><button data-v="album">Album</button><button data-v="accent">Accent</button><button data-v="rainbow">Rainbow</button></div>
+      </div>
+      <div class="setting">
+        <span>Volume</span>
+        <label class="volume"><svg><use href="#i-volume"/></svg><input type="range" min="0" max="100" data-bind="volume"></label>
+      </div>
+      <div class="setting">
+        <span>Recent places</span>
+        <button class="btn" data-action="clear-recents">Clear</button>
+      </div>
+      <div class="setting">
+        <span>Screen</span>
+        <button class="btn" data-action="reload">Reload UI</button>
+      </div>
+      <p class="hint">Map data © OpenStreetMap contributors, Protomaps. Imagery: USGS (public domain). With the offline data installed, the map, satellite view, search and routing all work without internet.</p>
+    </div>
+  </section>
+
+  <main id="map-wrap">
+    <div id="map"></div>
+    <!-- now playing over the map while the panel is hidden -->
+    <div class="map-np" data-action="np-open">
+      <canvas class="viz wide"></canvas>
+      <div class="art" data-art><svg class="ph"><use href="#i-music"/></svg></div>
+      <div class="map-np-text"><div class="track-title" data-bind="track-title"></div><div class="track-sub" data-bind="track-sub"></div></div>
+      <button class="icon-btn big" data-action="playpause" aria-label="Play or pause"><svg><use href="#i-play" data-bind="play-icon"/></svg></button>
+      <button class="icon-btn" data-action="next" aria-label="Next"><svg><use href="#i-next"/></svg></button>
+      <div class="progress"><div data-bind="track-progress"></div></div>
+    </div>
+    <div id="map-banner" hidden>
+      <svg class="man-icon" id="banner-icon"><use href="#i-turn"/></svg>
+      <div><div class="man-dist" id="banner-dist"></div><div class="man-text" id="banner-text"></div></div>
+    </div>
+    <button class="panel-btn" data-action="panel-toggle" aria-label="Hide or show the panel"><svg><use href="#i-chev-left"/></svg></button>
+    <button id="map-search" class="map-chip" data-action="search"><svg><use href="#i-search"/></svg>Search</button>
+    <div id="speed-chip"><b data-bind="speed">--</b><span data-bind="speed-unit">mph</span></div>
+    <div id="map-ctrls">
+      <button class="map-btn" id="layers-btn" data-action="layers" aria-label="Map layers"><svg><use href="#i-layers"/></svg></button>
+      <button class="map-btn" data-action="zoom-in" aria-label="Zoom in"><svg><use href="#i-plus"/></svg></button>
+      <button class="map-btn" data-action="zoom-out" aria-label="Zoom out"><svg><use href="#i-minus"/></svg></button>
+      <button class="map-btn" id="recenter" data-action="recenter" aria-label="Re-center" hidden><svg><use href="#i-locate"/></svg></button>
+    </div>
+    <div id="no-fix" hidden>Waiting for GPS…</div>
+    <div id="radar-chip" hidden><i></i><span>Radar</span></div>
+    <div id="layers-menu" hidden>
+      <button data-layer="satellite"><svg><use href="#i-sat"/></svg>Satellite</button>
+      <button data-layer="radar"><svg><use href="#i-cloud"/></svg>Radar</button>
+      <button data-layer="hillshade"><svg><use href="#i-mountain"/></svg>Shaded relief</button>
+      <button data-layer="relief"><svg><use href="#i-mountain"/></svg>Elevation colors</button>
+      <button data-layer="contours"><svg><use href="#i-contour"/></svg>Contours</button>
+      <button data-layer="3d"><svg><use href="#i-mountain"/></svg>3D terrain</button>
+    </div>
+  </main>
+</div>
+
+<div id="search-overlay" class="overlay" hidden>
+  <div class="search-top">
+    <div class="search-field"><svg><use href="#i-search"/></svg><span id="search-text"></span><span class="caret"></span></div>
+    <button class="icon-btn" data-action="voice-search" aria-label="Speak"><svg><use href="#i-mic"/></svg></button>
+    <button class="icon-btn" data-action="search-close" aria-label="Close"><svg><use href="#i-close"/></svg></button>
+  </div>
+  <div class="list" id="search-results"></div>
+  <div id="keyboard"></div>
+</div>
+
+<div id="voice-card" class="voice-card" hidden>
+  <div class="voice-orb"><svg><use id="voice-icon" href="#i-mic"/></svg></div>
+  <div class="voice-body">
+    <div class="voice-state" id="voice-state">Listening…</div>
+    <div class="voice-text" id="voice-text"></div>
+    <div class="voice-hint">“Truck, navigate to Starbucks” · “Truck, play Daft Punk” · or just ask</div>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+
+<audio id="audio" preload="auto"></audio>
+
+<!-- Now playing, full screen: big art and visualizer (tap the album art) -->
+<div id="np-full" class="overlay" hidden>
+  <div class="np-backdrop" data-art></div>
+  <div class="np-stage">
+    <canvas class="viz"></canvas>
+    <div class="np-art" data-art><svg class="ph"><use href="#i-music"/></svg></div>
+  </div>
+  <div class="np-side">
+    <div class="track-title" data-bind="track-title">Nothing playing</div>
+    <div class="track-sub" data-bind="track-sub"></div>
+    <div class="seek"><div class="progress"><div data-bind="track-progress"></div></div></div>
+    <div class="times"><span data-bind="t-cur">0:00</span><span data-bind="t-dur">0:00</span></div>
+    <div class="media-ctrls">
+      <button class="icon-btn" data-action="shuffle" aria-label="Shuffle"><svg><use href="#i-shuffle"/></svg></button>
+      <button class="icon-btn" data-action="prev" aria-label="Previous"><svg><use href="#i-prev"/></svg></button>
+      <button class="icon-btn big" data-action="playpause" aria-label="Play or pause"><svg><use href="#i-play" data-bind="play-icon"/></svg></button>
+      <button class="icon-btn" data-action="next" aria-label="Next"><svg><use href="#i-next"/></svg></button>
+      <button class="icon-btn" data-action="repeat" aria-label="Repeat"><svg><use href="#i-repeat"/></svg></button>
+    </div>
+    <div class="np-tools">
+      <button class="btn" data-action="viz-cycle"><svg><use href="#i-eq"/></svg><span data-bind="viz-name">Bars</span></button>
+      <label class="volume"><svg><use href="#i-volume"/></svg><input type="range" min="0" max="100" data-bind="volume"></label>
+    </div>
+  </div>
+  <button class="icon-btn np-close" data-action="np-close" aria-label="Close"><svg><use href="#i-chev-left"/></svg></button>
+</div>
+
+<!-- A satellite capture: its images, one at a time, and its audio -->
+<div id="cap-viewer" class="overlay" hidden>
+  <img id="cap-img" alt="">
+  <div class="video-top"><span id="cap-title"></span>
+    <button class="icon-btn" data-action="cap-close" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+  <button class="icon-btn cap-nav prev" data-action="cap-prev" aria-label="Previous image"><svg><use href="#i-chev-left"/></svg></button>
+  <button class="icon-btn cap-nav next" data-action="cap-next" aria-label="Next image"><svg><use href="#i-chev-left"/></svg></button>
+  <audio id="cap-audio" controls hidden></audio>
+</div>
+
+<!-- Video player -->
+<div id="video-stage" class="overlay" hidden>
+  <video id="video" controls playsinline preload="metadata"></video>
+  <div class="video-top"><span id="video-title"></span>
+    <button class="icon-btn" data-action="video-close" aria-label="Close video"><svg><use href="#i-close"/></svg></button></div>
+</div>
+<script src="vendor/maplibre/maplibre-gl.js"></script>
+<script src="vendor/pmtiles/pmtiles.js"></script>
+<script src="vendor/maplibre-contour/index.min.js"></script>
+<script src="vendor/protomaps/basemaps.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

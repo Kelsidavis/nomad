@@ -1,0 +1,30 @@
+# your settings and secrets
+nomad.conf
+*.token
+
+# map data, models and builds: large, downloaded or generated (see README)
+offline-build/
+models/
+*.mbtiles
+*.pmtiles
+*.gguf
+*.onnx
+DashLink.apk
+
+# Android build output, local SDK paths, and the C++ libraries fetched by dashlink-android/fetch-deps.sh
+dashlink-android/.gradle/
+dashlink-android/build/
+dashlink-android/app/build/
+dashlink-android/app/.cxx/
+dashlink-android/.kotlin/
+dashlink-android/local.properties
+dashlink-android/app/src/main/cpp/whisper.cpp/
+dashlink-android/app/src/main/cpp/ncnn/
+dashlink-android/app/src/main/assets/yolo*
+
+# Python and editor clutter
+__pycache__/
+*.pyc
+.DS_Store
+.idea/
+.vscode/

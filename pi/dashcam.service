@@ -1,0 +1,14 @@
+[Unit]
+Description=DashLink dashcam heartbeat (phone records while the Pi, i.e. the car, is on)
+After=dashlink-adb.service
+Wants=dashlink-adb.service
+
+[Service]
+# Cameras: 2 = wide rear (road), 1 = front (cabin). Use "run 2" for road only.
+ExecStart=/usr/bin/python3 /opt/dashlink/dashlink.py dashcam run 2,1
+Restart=always
+RestartSec=5
+User=pi
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=Voice command model (llama-server, Gemma 4 E2B) on 127.0.0.1:8090
+After=network.target
+ConditionPathExists=/home/k/models/gemma-4-E2B_q4_0-it.gguf
+
+[Service]
+ExecStart=/home/k/llama.cpp/build/bin/llama-server -m /home/k/models/gemma-4-E2B_q4_0-it.gguf -c 2048 -t 2 -np 1 --host 127.0.0.1 --port 8090 --jinja --no-webui \
+    --spec-type draft-mtp -md /home/k/models/ggml-org-mtp-gemma-4-E2B-it-Q4_0.gguf
+Restart=always
+RestartSec=5
+User=k
+# 2 threads: as fast as 4 here (memory-bound) and stays inside what the car supply can deliver.
+# MTP (Gemma's multi-token draft head) halves the time per command.
+# Below the UI and navigation, so a long answer never makes the map stutter.
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,21 @@
+# NOMAD settings. Copy this file to nomad.conf (gitignored: everyone keeps their own) and fill it in.
+# Shell syntax (KEY=value, no spaces around =): setup-pi.sh and deploy.sh source it, and setup-pi.sh installs it on
+# the Pi as /etc/nomad.conf, where the services read it.
+
+# Where deploy.sh sends your working copy: user@host of the Pi.
+PI_HOST=pi@raspberrypi.local
+
+# The head unit's name: its Bluetooth name, and the word that starts a voice command ("Truck, navigate home").
+NOMAD_NAME=Truck
+
+# lat,lon for weather and satellite passes before there's a GPS fix or a home set in Settings. Optional.
+HEADUNIT_HOME=
+
+# Serial of the USB GPS (a CP210x bridge) for its udev rule. Empty: setup-pi.sh uses the one plugged in.
+GPS_SERIAL=
+
+# headunit/tools/plex_music.py: copy a Plex music library for the car (lossless becomes Opus).
+PLEX_SERVER=http://plex.local:32400
+PLEX_SECTION=
+PLEX_TOKEN_FILE=~/.config/nomad/plex.token
+MUSIC_OUT=~/CarMusic

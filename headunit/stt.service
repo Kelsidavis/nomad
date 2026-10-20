@@ -1,0 +1,16 @@
+[Unit]
+Description=Head unit speech to text (whisper.cpp, base.en) on 127.0.0.1:8178
+After=network.target
+ConditionPathExists=/home/k/models/ggml-base.en-q5_1.bin
+
+[Service]
+ExecStart=/home/k/whisper.cpp/build/bin/whisper-server -m /home/k/models/ggml-base.en-q5_1.bin -t 2 -l en -ac 512 --host 127.0.0.1 --port 8178 --no-timestamps
+Restart=always
+RestartSec=5
+User=k
+# -ac 512: decode 10.24 s of audio instead of whisper's fixed 30 s window (3x faster); server.py records at
+# most 10 s per command, so nothing is cut off.
+Nice=-2
+
+[Install]
+WantedBy=multi-user.target
