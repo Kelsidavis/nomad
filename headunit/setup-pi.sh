@@ -58,9 +58,9 @@ EOT
 
 echo "== head unit UI"
 mkdir -p /opt/headunit
-cp -r "$REPO"/headunit/server.py "$REPO"/headunit/offline.py "$REPO"/headunit/intent.py "$REPO"/headunit/tts_server.py "$REPO"/headunit/radio.py "$REPO"/headunit/bt.py "$REPO"/headunit/config.py "$REPO"/headunit/static "$REPO"/headunit/headunit-kiosk.sh /opt/headunit/
+cp -r "$REPO"/headunit/server.py "$REPO"/headunit/offline.py "$REPO"/headunit/intent.py "$REPO"/headunit/tts_server.py "$REPO"/headunit/radio.py "$REPO"/headunit/bt.py "$REPO"/headunit/config.py "$REPO"/headunit/emergency.py "$REPO"/headunit/static "$REPO"/headunit/headunit-kiosk.sh /opt/headunit/
 chmod 755 /opt/headunit/headunit-kiosk.sh
-mkdir -p /opt/headunit/tools && cp "$REPO"/headunit/tools/sat_passes.py "$REPO"/headunit/tools/sstv_decode.py "$REPO"/headunit/tools/bench_intents.py /opt/headunit/tools/
+mkdir -p /opt/headunit/tools && cp "$REPO"/headunit/tools/sat_passes.py "$REPO"/headunit/tools/sstv_decode.py "$REPO"/headunit/tools/fetch_emergency.py "$REPO"/headunit/tools/bench_intents.py /opt/headunit/tools/
 # satellite passes and SSTV pictures for the radio tab: sgp4 and sstv in their own venv
 [ -x "$H/.venvs/sat/bin/python" ] || sudo -u "$U" sh -c 'python3 -m venv ~/.venvs/sat && ~/.venvs/sat/bin/pip install -q sgp4==2.24 sstv==0.2.0'
 chown -R "$U:$U" /opt/headunit  # so code updates need no sudo

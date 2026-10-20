@@ -35,5 +35,7 @@ NOMAD's own code is GPL-3.0-or-later ([LICENSE](LICENSE)). These keep their own 
 | USGS The National Map, orthoimagery | aerial imagery | public domain (US Government) |
 | AWS Terrain Tiles (Mapzen; from USGS 3DEP, SRTM, GMTED and others) | elevation layers | open data, attribution: see registry.opendata.aws/terrain-tiles |
 | NOAA / National Weather Service (forecast, alerts, NEXRAD radar, GOES-18 via NESDIS STAR) | weather | public domain (US Government) |
+| Washington DNR (Geology: Tsunami_Hazard), Oregon DOGAMI (tsunami evacuation zones) | tsunami layers | public agency data; check each agency's terms before redistributing the downloaded files |
+| FEMA National Shelter System (open shelters), USGS earthquake feed | shelters, earthquakes | public domain (US Government) |
 | CelesTrak | satellite orbits | free; please don't poll more than needed (NOMAD refreshes every two days) |
 | Photon (Komoot), Nominatim, OSRM demo server | online fallbacks only | each service's usage policy; not for bulk use |

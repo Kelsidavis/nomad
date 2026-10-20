@@ -13,6 +13,7 @@ Pi itself and keep working with no signal; it goes online only for what it doesn
 | **Media** | A 25,000-track library (artists, albums, songs, search, album art), spectrum visualizers, full-screen now playing, video; `tools/plex_music.py` copies a Plex library and converts lossless to Opus |
 | **Radio (SDR)** | FM/AM with band scan, NOAA weather radio, an EMS/fire/marine/air/ham scanner, satellite pass predictions with Doppler-corrected tuning, and automatic capture: Meteor-M2 weather images (SatDump) and ISS SSTV pictures |
 | **Weather** | NWS forecast and alerts, GOES-18 satellite pictures, radar on the map; cached for when you're offline |
+| **Emergency** | Tsunami evacuation zones, routes and assembly areas (WA, OR; offline) with "am I in a zone?", one-tap routes to high ground, open FEMA shelters, Red Cross, community centers, hospitals and fire stations nearby, USGS earthquakes on the map with spoken alerts; "Truck, evacuate" |
 | **Vehicle** | GPS (gpsd), satellite sky plot, g-meter, compass, Pi power and temperature |
 | **Look** | Android Auto-style layout from 800x480 up to 1080p, collapsible panels, dark/light by sunrise, accent color from the album art |
 
@@ -68,6 +69,7 @@ straight on the Pi. The examples cover the Western US; use any bounding box.
 | Elevation (z0-11) | `terrain/terrain.mbtiles` | `tools/fetch_imagery.py --source terrain -- terrain.mbtiles -125,31,-102,49.1 0 11` | 2.4 GB |
 | Place search | `search.sqlite` | the `osmium tags-filter` command in `tools/build_search.py`, then `tools/build_search.py` | 2.4 GB |
 | Routing | `valhalla/valhalla_tiles.tar` + `valhalla.json` + `valhalla_tiles/*.sqlite` | `tools/build-valhalla.sh` in `ghcr.io/valhalla/valhalla:3.9.1` with a Geofabrik `.osm.pbf` (Docker needs ~16 GB RAM) | 3 GB |
+| Tsunami evacuation (WA, OR) | `emergency/*.geojson` | `tools/fetch_emergency.py` (WA DNR and Oregon DOGAMI) | 7 MB |
 | Music | `~/Music/` | any `Artist/Album/track` folders; `tools/plex_music.py` copies a Plex library with clean names (`library.json`) and covers | — |
 
 Missing pieces fall back to online services (OSM tiles, Photon/Nominatim, OSRM, AWS terrain) when there's a

@@ -192,6 +192,7 @@ function showView(name) {
   if (name === "radio") loadRadio();
   if (name === "assistant") renderChat();
   if (name === "settings") paintBt();
+  if (name === "emergency") loadEmergency();
   renderNav();
 }
 
@@ -203,7 +204,7 @@ let home = load("home", null);  // {name, address, lat, lon}: Settings → Home
 let radarOn = load("radar", false);
 // Elevation layers (server.py /terrain: the downloaded DEM, else AWS when online). mlcontour makes contour lines
 // from the same tiles in a worker.
-const terrain = { hillshade: false, relief: false, contours: false, "3d": false, ...load("terrainLayers", {}) };
+const terrain = { hillshade: false, relief: false, contours: false, "3d": false, tsunami: false, quakes: false, ...load("terrainLayers", {}) };
 let dem = null;  // mlcontour.DemSource, made in initMap
 const DEM_MAXZOOM = 11;  // NEXRAD radar over the map (radio.py radar_tile), new frames every 5 min
 const radarStamp = () => Math.floor(Date.now() / 300000);
@@ -279,6 +280,31 @@ function buildStyle() {
           "text-field": ["concat", ["number-format", ["get", "ele"], {}], ft ? " ft" : " m"], "text-font": ["Noto Sans Regular"] },
         paint: { "text-color": dark ? "#e8c890" : "#6b4a22", "text-halo-color": dark ? "#000" : "#fff", "text-halo-width": 1 } });
     }
+  }
+  if (terrain.tsunami) {  // evacuation zones by risk, routes, where to go (WA DNR, OR DOGAMI; tools/fetch_emergency.py)
+    for (const n of ["zones", "routes", "assembly", "sirens"]) sources[`em-${n}`] = { type: "geojson", data: `${origin}/emergency/${n}.geojson` };
+    const labels = layers.findIndex((l) => l.type === "symbol");
+    layers.splice(labels < 0 ? layers.length : labels, 0,
+      { id: "em-zones", type: "fill", source: "em-zones", paint: { "fill-color": ["match", ["get", "zone"], "local", "#fb8c00", "#e53935"],
+        "fill-opacity": ["match", ["get", "zone"], "local", 0.18, 0.28] } },
+      { id: "em-zones-edge", type: "line", source: "em-zones", paint: { "line-color": "#e53935", "line-width": 1, "line-opacity": 0.6 } },
+      { id: "em-routes", type: "line", source: "em-routes", layout: { "line-cap": "round" },
+        paint: { "line-color": "#2ecc71", "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2, 16, 6], "line-dasharray": [2, 1] } });
+    layers.push(
+      { id: "em-sirens", type: "circle", source: "em-sirens", minzoom: 11, paint: { "circle-radius": 4, "circle-color": "#ffd54f", "circle-stroke-width": 1, "circle-stroke-color": "#000" } },
+      { id: "em-assembly", type: "circle", source: "em-assembly", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 9, 4, 15, 9],
+        "circle-color": ["match", ["get", "kind"], "Vertical evacuation structure", "#9c27b0", "Post-tsunami assembly area", "#2ecc71", "Post-tsunami shelter", "#2ecc71", "#4c8dff"],
+        "circle-stroke-width": 2, "circle-stroke-color": "#fff" } },
+      { id: "em-assembly-label", type: "symbol", source: "em-assembly", minzoom: 12, layout: { "text-field": ["get", "name"], "text-size": 12,
+        "text-offset": [0, 1.2], "text-anchor": "top", "text-font": ["Noto Sans Medium"] },
+        paint: { "text-color": theme === "dark" ? "#9ff0c0" : "#106b35", "text-halo-color": theme === "dark" ? "#000" : "#fff", "text-halo-width": 1.2 } });
+  }
+  if (terrain.quakes) {  // USGS, past week, M2.5+: size by magnitude, red when recent
+    sources.quakes = { type: "geojson", data: `${origin}/api/quakes`, attribution: "Earthquakes: USGS" };
+    layers.push({ id: "quakes", type: "circle", source: "quakes", paint: {
+      "circle-radius": ["interpolate", ["exponential", 1.6], ["get", "mag"], 2.5, 4, 5, 12, 7, 26],
+      "circle-color": ["interpolate", ["linear"], ["get", "hours"], 0, "#ff1744", 24, "#ff9100", 168, "#ffd54f"],
+      "circle-opacity": 0.65, "circle-stroke-width": 1, "circle-stroke-color": "#000" } });
   }
   if (radarOn) {  // under the labels, over everything else
     sources.radar = { type: "raster", tiles: [`${origin}/wx/radar/{z}/{x}/{y}.png?t=${radarStamp()}`], tileSize: 256, maxzoom: 10,
@@ -1410,6 +1436,91 @@ async function btForget() {
   paintBt();
 }
 
+// ---- emergency: tsunami zone, where to go, help nearby, shelters, earthquakes (emergency.py) ----
+let emergencyInfo = null;
+const HELP_TITLES = { community: "Community centers", redcross: "Red Cross", hospital: "Hospitals", fire: "Fire stations" };
+async function loadEmergency() {
+  $("#em-list").innerHTML = `<div class="empty">Looking around…</div>`;
+  try {
+    emergencyInfo = await api("/api/emergency");
+  } catch (e) {
+    $("#em-list").innerHTML = `<div class="empty">Couldn't load: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  if (!radio.weather) radio.weather = await api("/api/weather").catch(() => null);
+  renderEmergency();
+}
+function renderEmergency() {
+  const e = emergencyInfo, rows = [];
+  if (!e) return;
+  if (e.error) return ($("#em-list").innerHTML = `<div class="empty">${escapeHtml(e.error)}</div>`);
+  const banner = document.createElement("div");
+  banner.className = "em-banner " + (e.zone ? "danger" : "ok");
+  banner.textContent = e.zone ? e.zone.advice : e.have_tsunami_data ? "Not in a tsunami evacuation zone." : "No tsunami zone data installed (tools/fetch_emergency.py).";
+  rows.push(banner);
+  for (const a of radio.weather?.alerts || []) rows.push(Object.assign(document.createElement("div"), { className: "wx-alert", textContent: `⚠ ${a.event}: ${a.headline || ""}` }));
+  for (const q of lastState?.quake_alerts || []) rows.push(Object.assign(document.createElement("div"), { className: "wx-alert", textContent: `⚠ Earthquake M${q.mag.toFixed(1)}, ${q.place}${q.tsunami ? " (tsunami possible)" : ""}` }));
+  if (e.assembly.length) {
+    rows.push(head(e.zone ? "Go here: assembly areas and high ground" : "Tsunami assembly areas nearby"));
+    rows.push(...e.assembly.map((a) => placeRow(a.name, [a.kind, a.address, a.elev_ft != null && `${a.elev_ft} ft up`].filter(Boolean).join(" · "), a, "#i-flag")));
+  } else if (e.zone) rows.push(note("No mapped assembly areas near here: head inland and uphill, out of the zone, on foot if you can."));
+  rows.push(head("Open emergency shelters (FEMA)"));
+  rows.push(...(e.shelters.length ? e.shelters.map((s) => placeRow(s.name, `${s.address}${s.org ? ` · ${s.org}` : ""}`, s, "#i-home"))
+    : [note("None open nearby right now (this needs internet).")]));
+  for (const [k, title] of Object.entries(HELP_TITLES)) {
+    if (!e.help[k]?.length) continue;
+    rows.push(head(title));
+    rows.push(...e.help[k].map((p) => placeRow(p.name, p.address || p.kind, p, k === "hospital" ? "#i-plus" : "#i-home")));
+  }
+  rows.push(head("Earthquakes in the past week, within 500 km"));
+  rows.push(...(e.quakes.length ? e.quakes.map((q) => {
+    const d = document.createElement("div");
+    d.className = "list-item media-row quake-row";
+    d.innerHTML = `<span class="thumb mag"></span><span class="txt"><span class="t"></span><span class="s"></span></span>`;
+    d.querySelector(".mag").textContent = q.mag.toFixed(1);
+    d.querySelector(".mag").style.background = q.mag >= 5 ? "var(--bad)" : q.mag >= 4 ? "var(--warn)" : "";
+    d.querySelector(".t").textContent = q.place;
+    const ago = (Date.now() / 1000 - q.time) / 3600;
+    d.querySelector(".s").textContent = `${ago < 1 ? `${Math.round(ago * 60)} min` : ago < 48 ? `${Math.round(ago)} h` : `${Math.round(ago / 24)} days`} ago · ${distText(q.km * 1000)} away · ${Math.round(q.depth_km)} km deep`;
+    return d;
+  }) : [note("None (or no internet yet to fetch them).")]));
+  $("#em-list").replaceChildren(...rows);
+}
+function placeRow(title, sub, p, icon) {
+  const b = document.createElement("button");
+  b.className = "list-item media-row";
+  b.innerHTML = `<span class="thumb"><svg><use href="${icon}"/></svg></span><span class="txt"><span class="t"></span><span class="s"></span></span><span class="sat-el"></span>`;
+  b.querySelector(".t").textContent = title;
+  b.querySelector(".s").textContent = sub || "";
+  b.querySelector(".sat-el").textContent = distText(p.km * 1000);
+  b.onclick = () => previewRoute({ name: title, address: sub || "", lat: p.lat, lon: p.lon });
+  return b;
+}
+// "Truck, evacuate" / "nearest shelter": straight to the closest one.
+async function emergencyGo(kind) {
+  const e = (emergencyInfo = await api("/api/emergency").catch(() => null));
+  if (!e || e.error) return e?.error || "Can't tell where we are yet";
+  const pick = kind === "evacuate" ? e.assembly[0] : kind === "shelter" ? e.shelters[0] || e.help.community[0] || e.help.redcross[0] : e.help[kind]?.[0];
+  if (!pick) return kind === "evacuate" ? (e.zone ? "No mapped assembly area near here: head inland and uphill" : "You're not in a tsunami zone") : "Nothing found nearby";
+  await previewRoute({ name: pick.name, address: pick.address || "", lat: pick.lat, lon: pick.lon });
+  if (nav.route) startNav();
+  return `Navigating to ${pick.name}`;
+}
+// Earthquake alerts from the server (USGS feed): said once each.
+const quakesSaid = new Set(load("quakesSaid", []));
+function checkQuakeAlerts(s) {
+  for (const q of s.quake_alerts || []) {
+    if (quakesSaid.has(q.id)) continue;
+    quakesSaid.add(q.id);
+    save("quakesSaid", [...quakesSaid].slice(-50));
+    const msg = `Earthquake alert: magnitude ${q.mag.toFixed(1)}, ${q.place}, ${spokenDist(q.km * 1000)} away.` +
+      (q.tsunami ? " A tsunami may be possible: if you're near the coast, go to high ground." : "");
+    setVoice("error", msg);
+    hideVoice(12000);
+    speak(msg);  // even with direction prompts off
+  }
+}
+
 // ---- collapsing: the side panel (full-screen map) and the home cards, both remembered ----
 function setPanel(hidden, remember = true) {
   if (document.body.classList.contains("panel-hidden") === hidden) return;
@@ -1921,6 +2032,7 @@ function onState(s) {
   lastState = s;
   const p = s.position;
   updatePosition(p);
+  checkQuakeAlerts(s);
   const spd = p ? (p.speed_mps < 0.5 ? 0 : p.speed_mps) : null;
   bind("speed", speedVal(spd));
   bind("speed-unit", speedUnit());
@@ -2080,6 +2192,11 @@ async function runCommand(raw, fromModel = false) {
   if (/^(?:(?:navigate|directions|drive|go|head|take me|get me)(?: me)? (?:to )?)?(?:my )?(?:home|house)$|^(?:take me|go|head|drive) home$/.test(text)) {
     return goHome() ? "Navigating home" : "No home set yet";
   }
+  if (/evacuat|tsunami|high ground|assembly area/.test(text)) return emergencyGo("evacuate");
+  if ((m = text.match(/(?:nearest|closest|find|take me to|navigate to|where is) (?:an? |the )?(?:nearest |closest )?(emergency shelter|shelter|red cross|hospital|emergency room|er|fire station|community cent(?:er|re))/))) {
+    return emergencyGo({ "red cross": "redcross", hospital: "hospital", "emergency room": "hospital", er: "hospital", "fire station": "fire" }[m[1]] ||
+      (m[1].startsWith("community") ? "community" : "shelter"));
+  }
   if ((m = text.match(/^(?:navigate|directions|take me|drive|go|get directions)(?: me)? to (?:the )?(.+)$/))) {
     query = m[1];
     const results = await runSearch();
@@ -2225,6 +2342,8 @@ const ACTIONS = {
   "radio-enter": () => openSearch("", "freq"),
   "chat-type": () => openSearch("", "chat"),
   "bt-pair": btPair,
+  emergency: () => showView("emergency"),
+  "em-refresh": loadEmergency,
   "bt-forget": btForget,
   "chat-mic": chatMic,
   "chat-stop": () => chatLog.busy?.abort(),

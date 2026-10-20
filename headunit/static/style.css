@@ -248,6 +248,7 @@ svg { width: 1.5rem; height: 1.5rem; fill: currentColor; flex: none; }
 /* ---- media: the panel widens to 60% while it's open; the map stays on the right ---- */
 #app { transition: grid-template-columns 0.25s ease; }
 body[data-view="media"] #app, body[data-view="radio"] #app, body[data-view="assistant"] #app { grid-template-columns: 5.2rem minmax(0, 60vw) 1fr; }
+body[data-view="emergency"] #app { grid-template-columns: 5.2rem minmax(0, 45vw) 1fr; }  /* the map stays: routes and zones show on it */
 #panel { container-type: inline-size; }
 .media-layout { display: grid; grid-template-columns: minmax(16rem, 0.8fr) 1.2fr; gap: 0.9rem; flex: 1; min-height: 0; }
 .player { background: var(--card); border-radius: var(--radius); padding: 1rem; display: flex; flex-direction: column; gap: 0.9rem; min-height: 0; }
@@ -520,6 +521,18 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 .chat-field { flex: 1; min-height: 3.4rem; border-radius: 1.7rem; background: var(--card); color: var(--text-2); text-align: left; padding: 0 1.2rem; font-size: 1.05rem; }
 .chat-hello { margin: auto 0; text-align: center; }
 #search-overlay[data-mode="chat"] #search-text:empty::before { content: "Ask anything"; }
+
+/* emergency */
+.em-btn { display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; min-height: 2.8rem; margin-top: 0.5rem;
+  border-radius: 1.4rem; background: color-mix(in srgb, var(--bad) 18%, var(--card-2)); color: var(--bad); font-weight: 700; }
+.em-btn svg { width: 1.2rem; height: 1.2rem; fill: currentColor; }
+.nav-card.folded .em-btn { display: flex; }
+.em-banner { padding: 0.9rem 1rem; font-weight: 700; font-size: 1.05rem; flex: none; line-height: 1.35; }
+.em-banner.danger { background: var(--bad); color: #fff; }
+.em-banner.ok { background: color-mix(in srgb, var(--good) 22%, transparent); }
+#em-list .media-row { height: calc(var(--row-rem, 4.2) * 1rem); }
+.quake-row .mag { font-weight: 800; color: #fff; background: var(--card-2); }
+#view-emergency .list { flex: 1; min-height: 0; }
 
 /* video: full screen */
 #video-stage { background: #000; display: grid; place-items: center; z-index: 2100; }

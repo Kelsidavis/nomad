@@ -42,6 +42,7 @@ import intent  # noqa: E402
 import radio  # noqa: E402
 import config  # noqa: E402
 import bt  # noqa: E402
+import emergency  # noqa: E402
 
 PORT = int(os.environ.get("HEADUNIT_PORT", 8800))
 BIND = os.environ.get("HEADUNIT_BIND", "127.0.0.1")
@@ -134,6 +135,7 @@ class State:
             return {
                 "t": now,
                 "speaking": self.speaking,
+                "quake_alerts": [{k: q[k] for k in ("id", "mag", "place", "km", "tsunami", "time")} for q in emergency.alerts()[:3]],
                 "position": self.position(now),
                 "gps": {"gpsd": self.gpsd_up, "mode": (self.tpv or {}).get("mode", 0),
                         "sats_used": sky.get("uSat"), "sats_seen": sky.get("nSat"),
@@ -655,6 +657,18 @@ class Handler(BaseHTTPRequestHandler):
         q = {k: v[0] for k, v in multi.items()}
         path = url.path
         try:
+            if path == "/api/emergency":  # the Emergency screen: where the truck is, or ?lat=&lon= (somewhere you're headed)
+                loc = (float(q["lat"]), float(q["lon"])) if "lat" in q else here()
+                if not loc:
+                    return self.send(200, {"error": "Waiting for a GPS fix (or set a home in Settings)"})
+                return self.send(200, emergency.summary(*loc))
+            if path == "/api/quakes":  # the past week's quakes as GeoJSON, for the map layer
+                return self.send(200, {"type": "FeatureCollection", "features": [
+                    {"type": "Feature", "geometry": {"type": "Point", "coordinates": [q["lon"], q["lat"]]},
+                     "properties": {"mag": q["mag"], "place": q["place"], "hours": round((time.time() - q["time"]) / 3600, 1)}}
+                    for q in emergency.quakes()]}, cache="max-age=60")
+            if path.startswith("/emergency/"):  # /emergency/zones.geojson etc.: tsunami evacuation layers
+                return self.file(emergency.layer_path(path[11:].removesuffix(".geojson")), "max-age=86400")
             if path == "/api/config":  # what the page needs from nomad.conf
                 return self.send(200, {"name": config.NAME})
             if path == "/api/bt":
@@ -956,7 +970,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
-                 lambda: radio.capture_loop(here)):
+                 lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here)):
         threading.Thread(target=loop, daemon=True).start()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True
