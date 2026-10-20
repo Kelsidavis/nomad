@@ -7,7 +7,7 @@ const RAD = Math.PI / 180;
 
 // ---- settings (per screen, so localStorage is fine; the UI works without it) ----
 const DEFAULTS = { units: "imperial", theme: "auto", clock: "12", prompts: "on", orient: "heading", viz: "bars", vizColor: "album",
-  accent: "blue", voice: "af_bella", speakOn: "truck" };
+  accent: "blue", voice: "af_bella", speakOn: "truck", notify: "hide" };
 const settings = { ...DEFAULTS, ...load("settings", {}) };
 function load(key, fallback) {
   try { return JSON.parse(localStorage.getItem("hu." + key)) ?? fallback; } catch { return fallback; }
@@ -192,7 +192,7 @@ function showView(name) {
   if (name === "radio") loadRadio();
   if (name === "weather") loadWeather();
   if (name === "assistant") renderChat();
-  if (name === "settings") paintBt();
+  if (name === "settings") { paintBt(); paintWifi(); }
   if (name === "emergency") loadEmergency();
   renderNav();
 }
@@ -703,8 +703,11 @@ function renderRecents() {
 let query = "", kbLayer = "abc", searchMode = "places";  // places (map) or music
 const LAYERS = {
   abc: ["qwertyuiop", "asdfghjkl", "zxcvbnm"],
-  num: ["1234567890", "-/:;()&@'", ".,#?!+\""],
+  ABC: ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"],
+  num: ["1234567890", "-/:;()$&@\"", ".,?!'_#%*+"],
+  sym: ["[]{}^~<>=|", "\\€£¥•`", ".,?!'_#%*+"],
 };
+let kbShiftOnce = false;  // Shift for one letter; tap twice (caps) to stay
 function openSearch(text = "", mode = "places") {
   query = text;
   searchMode = mode;
@@ -713,30 +716,44 @@ function openSearch(text = "", mode = "places") {
   $("#search-overlay").hidden = false;
   renderKeyboard();
   if (mode === "music") return loadMedia().then(() => showMusicSearch(query));
+  if (mode === "pass") { showTyped(); return ($("#search-results").innerHTML = `<div class="empty">Password for “${escapeHtml(wifiTarget)}”, then Join.</div>`); }
   if (mode === "chat") return ($("#search-results").innerHTML = `<div class="empty">Type a question, then tap Send.</div>`);
   if (mode === "freq") return ($("#search-results").innerHTML = `<div class="empty">Type a frequency: 98.5 (FM), 1190 (AM, in kHz), 155.34 or 162.55 (narrow FM).</div>`);
   if (query) runSearch(); else showSearchRecents();
 }
 function closeSearch() { $("#search-overlay").hidden = true; }
 function renderKeyboard() {
-  const kb = $("#keyboard");
+  const kb = $("#keyboard"), letters = kbLayer === "abc" || kbLayer === "ABC";
   const rows = LAYERS[kbLayer].map((chars, i) => {
-    const keys = [...chars].map((c) => `<button class="key" data-k="${c.replace(/"/g, "&quot;")}">${c}</button>`);
-    if (i === 2) keys.push(`<button class="key wide" data-k="back" aria-label="Delete"><svg><use href="#i-back"/></svg></button>`);
+    const keys = [...chars].map((c) => `<button class="key" data-k="${c.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}">${escapeHtml(c)}</button>`);
+    if (i === 2) {
+      keys.unshift(letters ? `<button class="key wide${kbLayer === "ABC" ? " on" : ""}" data-k="shift" aria-label="Shift">⇧</button>`
+        : `<button class="key wide" data-k="sympage">${kbLayer === "num" ? "#+=" : "123"}</button>`);
+      keys.push(`<button class="key wide" data-k="back" aria-label="Delete"><svg><use href="#i-back"/></svg></button>`);
+    }
     return `<div class="kb-row">${keys.join("")}</div>`;
   });
-  rows.push(`<div class="kb-row"><button class="key wide" data-k="layer">${kbLayer === "abc" ? "123" : "ABC"}</button>
-    <button class="key space" data-k=" ">space</button><button class="key wide go" data-k="go">${searchMode === "chat" ? "Send" : "Search"}</button></div>`);
+  const go = { chat: "Send", pass: "Join" }[searchMode] || "Search";
+  rows.push(`<div class="kb-row"><button class="key wide" data-k="layer">${letters ? "123" : "ABC"}</button>
+    <button class="key space" data-k=" ">space</button><button class="key wide go" data-k="go">${go}</button></div>`);
   kb.innerHTML = rows.join("");
+}
+function showTyped() {  // passwords show as dots, the last character for a moment
+  $("#search-text").textContent = searchMode === "pass" ? "•".repeat(Math.max(0, query.length - 1)) + query.slice(-1) : query;
 }
 $("#keyboard").addEventListener("click", (e) => {
   const k = e.target.closest(".key")?.dataset.k;
   if (k == null) return;
   if (k === "back") query = query.slice(0, -1);
-  else if (k === "layer") { kbLayer = kbLayer === "abc" ? "num" : "abc"; return renderKeyboard(); }
+  else if (k === "layer") { kbLayer = kbLayer === "abc" || kbLayer === "ABC" ? "num" : "abc"; return renderKeyboard(); }
+  else if (k === "shift") { kbShiftOnce = kbLayer === "abc"; kbLayer = kbLayer === "abc" ? "ABC" : "abc"; return renderKeyboard(); }
+  else if (k === "sympage") { kbLayer = kbLayer === "num" ? "sym" : "num"; return renderKeyboard(); }
   else if (k === "go") return runSearch();
-  else query += k;
-  $("#search-text").textContent = query;
+  else {
+    query += k;
+    if (kbShiftOnce && kbLayer === "ABC") { kbShiftOnce = false; kbLayer = "abc"; renderKeyboard(); }
+  }
+  showTyped();
   if (searchMode === "music") showMusicSearch(query.trim());  // the library is local: filter as you type
 });
 function showSearchRecents() {
@@ -763,6 +780,7 @@ async function runSearch() {
   if (searchMode === "music") return showMusicSearch(q);
   if (searchMode === "freq") return tuneTyped(q);
   if (searchMode === "chat") { closeSearch(); return askAssistant(q); }
+  if (searchMode === "pass") { closeSearch(); return wifiJoin(wifiTarget, query); }
   if (!q) return;
   const box = $("#search-results");
   box.innerHTML = `<div class="empty">Searching…</div>`;
@@ -1412,6 +1430,60 @@ async function chatMic() {
     hideVoice(3000);
   }
 }
+
+// ---- Wi-Fi and data use (network.py) ----
+let wifiTarget = "", wifiInfo = null;
+async function paintWifi(rescan) {
+  try { wifiInfo = await api(`/api/wifi${rescan ? "?rescan=1" : ""}`); } catch (e) { $("#wifi-state").textContent = e.message; return; }
+  const w = wifiInfo;
+  $("#wifi-state").textContent = w.active ? `Connected to ${w.active}${w.metered ? " (metered)" : ""}` : "Not connected";
+  for (const b of $$("#data-seg button")) b.classList.toggle("on", b.dataset.v === w.mode);
+  $("#data-note").textContent = { auto: `Now: ${w.effective === "saver" ? "saving data (metered connection)" : "normal"}`,
+    normal: "Background downloads on any connection", saver: "No background downloads; what you open still loads",
+    offline: "Never goes online: maps, routing, voice and music still work" }[w.mode];
+  const box = $("#wifi-list");
+  if (box.hidden) return;
+  box.replaceChildren(...w.networks.map((n) => {
+    const b = document.createElement("button");
+    b.className = "list-item media-row" + (n.active ? " playing" : "");
+    b.innerHTML = `<span class="thumb"><svg><use href="#i-wifi"/></svg></span><span class="txt"><span class="t"></span><span class="s"></span></span><span class="sat-el"></span>`;
+    b.querySelector(".t").textContent = n.ssid;
+    b.querySelector(".s").textContent = [n.active ? "connected" : n.saved ? "saved" : "", n.secure ? "secured" : "open"].filter(Boolean).join(" · ");
+    b.querySelector(".sat-el").textContent = `${n.signal}%`;
+    b.onclick = () => wifiPick(n);
+    return b;
+  }), ...(w.networks.length ? [] : [note("No networks found.")]));
+}
+function wifiPick(n) {
+  if (n.active) {
+    if (n.saved && confirm(`Forget “${n.ssid}”? The truck won't join it again until you enter the password.`)) wifiForget(n.ssid);
+    return;
+  }
+  if (n.saved || !n.secure) return wifiJoin(n.ssid, "");
+  wifiTarget = n.ssid;
+  kbLayer = "abc";
+  openSearch("", "pass");
+}
+async function wifiJoin(ssid, password) {
+  toast(`Joining ${ssid}…`, 20000);
+  try {
+    wifiInfo = await api("/api/wifi/connect", { json: { ssid, password } });
+    toast(`Connected to ${ssid}`);
+  } catch (e) {
+    toast(`Couldn't join ${ssid}: ${e.message}`, 5000);
+  }
+  paintWifi();
+}
+async function wifiForget(ssid) {
+  try { await api("/api/wifi/forget", { json: { ssid } }); toast(`Forgot ${ssid}`); } catch (e) { toast(e.message); }
+  paintWifi();
+}
+$("#data-seg").addEventListener("click", async (e) => {
+  const v = e.target.closest("button")?.dataset.v;
+  if (!v) return;
+  try { await api("/api/data", { json: { mode: v } }); } catch (err) { toast(err.message); }
+  paintWifi();
+});
 
 // ---- Bluetooth: pair a phone from Settings (bt.py) ----
 let btPoll;
@@ -2097,7 +2169,11 @@ function onState(s) {
   lastState = s;
   const p = s.position;
   updatePosition(p);
+  updateWhere(p);
   checkQuakeAlerts(s);
+  $("#st-net").setAttribute("class", "st " + (s.data === "offline" ? "off" : s.online ? (s.data === "saver" ? "warn" : "ok") : "off"));
+  $("#st-net title").textContent = s.data === "offline" ? "Offline (Settings → Data use)" : !s.online ? "Offline: maps, routing, voice and music still work"
+    : s.data === "saver" ? "Online, saving data" : "Online";
   const spd = p ? (p.speed_mps < 0.5 ? 0 : p.speed_mps) : null;
   bind("speed", speedVal(spd));
   bind("speed-unit", speedUnit());
@@ -2232,8 +2308,29 @@ async function handleUtterance(raw) {
   return runCommand(rest);
 }
 
+// Where we are in words ("in Longview", "6 miles N of Woodland"), refreshed after moving a kilometer or so.
+let whereNow = null, whereAt = null;
+function updateWhere(p) {
+  if (!p || (whereAt && Math.hypot(p.lat - whereAt.lat, p.lon - whereAt.lon) < 0.01)) return;
+  whereAt = { lat: p.lat, lon: p.lon };
+  api(`/api/where?lat=${p.lat}&lon=${p.lon}`).then((w) => (whereNow = w?.name ? w : null)).catch(() => {});
+}
+const whereText = (w = whereNow) => (!w ? "" : w.km < 2.5 ? `in ${w.name}` : `${spokenDist(w.km * 1000)} ${w.dir} of ${w.name}`);
+// The forecast, kept current in the background for the voice and the assistant (the server caches it).
+function refreshWeather() { api("/api/weather").then((w) => { if (!w.error) { radio.weather = w; radio.weatherAt = Date.now(); } }).catch(() => {}); }
+setInterval(refreshWeather, 600000);
+setTimeout(refreshWeather, 5000);
+function weatherText() {
+  const p = radio.weather?.periods?.[0];
+  if (!p) return "";
+  const alerts = (radio.weather.alerts || []).map((a) => a.event).join(", ");
+  return `weather ${p.name.toLowerCase()}: ${p.shortForecast.toLowerCase()}, ${p.temperature}°${p.temperatureUnit}${p.rain ? `, ${p.rain}% rain` : ""}` +
+    (alerts ? `; active alerts: ${alerts}` : "");
+}
 function carContext() {
   const parts = [`${fmtClock(new Date(), true)}, ${new Date().toLocaleDateString([], { weekday: "long" })}`];
+  if (whereNow) parts.push(whereText());
+  if (weatherText()) parts.push(weatherText());
   if (nav.route && nav.dest) parts.push(`navigating to ${nav.dest.name}, arriving ${$("#nav-eta").textContent}, ${$("#nav-left-time").textContent} left`);
   const t = curTrack();
   if (t && audio.src && !audio.paused) parts.push(`playing “${t.title}” by ${t.artist} from the album ${t.album}${t.year ? ` (${t.year})` : ""}`);
@@ -2316,6 +2413,11 @@ async function runCommand(raw, fromModel = false) {
     return msg;
   }
   if (/what time/.test(text)) { const msg = `It's ${fmtClock(new Date(), true)}`; say(msg); return msg; }
+  if (/where (are|am) (we|i)|what town|where is this/.test(text)) {
+    const msg = whereNow ? `We're ${whereText()}` : lastPos ? "Somewhere without a town nearby" : "No GPS fix yet";
+    say(msg);
+    return msg;
+  }
   if (/weather|forecast|going to rain/.test(text)) {
     const w = (radio.weather = await api("/api/weather").catch(() => null));
     const p = w?.periods?.[0];
@@ -2408,6 +2510,7 @@ const ACTIONS = {
   "radio-enter": () => openSearch("", "freq"),
   "chat-type": () => openSearch("", "chat"),
   "bt-pair": btPair,
+  "wifi-list": () => { $("#wifi-list").hidden = !$("#wifi-list").hidden; $("#wifi-btn").textContent = $("#wifi-list").hidden ? "Choose network" : "Done"; paintWifi(true); },
   emergency: () => showView("emergency"),
   "em-refresh": loadEmergency,
   "wx-refresh": () => loadWeather(true),

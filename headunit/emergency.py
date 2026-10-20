@@ -16,7 +16,8 @@ DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".loca
 EMERGENCY = DATA / "emergency"
 CACHE = pathlib.Path(os.environ.get("HEADUNIT_CACHE", pathlib.Path.home() / ".cache/headunit"))
 USER_AGENT = "nomad-headunit/0.1 (car head unit)"
-QUAKES_URL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson"
+QUAKES_WEEK = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson"  # ~250 KB
+QUAKES_HOUR = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_hour.geojson"  # a few KB
 SHELTERS_URL = "https://gis.fema.gov/arcgis/rest/services/NSS/OpenShelters/MapServer/0/query"
 # Full-text queries on the offline search index (column filters: a plain bounding box over 18 M rows is slow)
 HELP_QUERIES = {"community": 'kind : "community centre"', "hospital": 'kind : "hospital"', "fire": 'kind : "fire station"',
@@ -160,9 +161,12 @@ def _get(url, timeout=20):
 
 def shelters_near(lat, lon, radius_km=150):
     """FEMA National Shelter System shelters that are open now, within radius_km (online; 15-minute cache)."""
+    import network
     key = (round(lat, 1), round(lon, 1))
-    if time.time() - _shelters["t"] < 900 and _shelters["key"] == key:
+    if (time.time() - _shelters["t"] < 900 or not network.allowed("ask")) and _shelters["key"] == key:
         return _shelters["list"]
+    if not network.allowed("ask"):
+        return []
     d = radius_km / 111
     params = {"where": "shelter_status='OPEN'", "outFields": "shelter_name,address,city,state,org_name,evacuation_capacity,latitude,longitude",
               "geometry": f"{lon - d * 1.5},{lat - d},{lon + d * 1.5},{lat + d}", "geometryType": "esriGeometryEnvelope",
@@ -206,12 +210,27 @@ def worth_alerting(q, d):
 
 
 def quake_loop(where):
-    """Every 2 minutes: the USGS feed; new quakes worth alerting about (for where() = (lat, lon)) go to alerts()."""
+    """The USGS feeds: the last hour every 2 minutes (10 on Data saver) for alerts, the past week every hour
+    (6 on saver) for the map; new quakes worth alerting about (for where() = (lat, lon)) go to alerts()."""
+    import network
     seen = set()
     first = True
+    week_at = 0
     while True:
+        saver = network.data_use()["effective"] == "saver"
+        if not network.allowed("ask"):
+            time.sleep(120)
+            continue
         try:
-            feed = [_quake(f) for f in _get(QUAKES_URL, 30)["features"]]
+            fresh = [_quake(f) for f in _get(QUAKES_HOUR, 30)["features"]]
+            if time.time() - week_at > (6 * 3600 if saver else 3600):
+                week = [_quake(f) for f in _get(QUAKES_WEEK, 30)["features"]]
+                week_at = time.time()
+            else:
+                week = quakes()
+            ids = {q["id"] for q in fresh}
+            feed = sorted(fresh + [q for q in week if q["id"] not in ids and time.time() - q["time"] < 7 * 86400],
+                          key=lambda q: -q["time"])
             _quakes.update(t=time.time(), list=feed)
             CACHE.mkdir(parents=True, exist_ok=True)
             (CACHE / "quakes.json").write_text(json.dumps(feed))
@@ -229,7 +248,7 @@ def quake_loop(where):
             first = False
         except (OSError, ValueError, KeyError) as e:
             print(f"quakes: {e}")
-        time.sleep(120)
+        time.sleep(600 if saver else 120)
 
 
 def alerts():

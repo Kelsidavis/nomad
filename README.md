@@ -87,7 +87,9 @@ connection. `HEADUNIT_OFFLINE=1` turns the fallbacks off, to check the offline d
 | `GPS_SERIAL` | the GPS bridge's serial for its udev rule; empty = whichever CP210x is plugged in at setup |
 | `PLEX_*`, `MUSIC_OUT` | defaults for `tools/plex_music.py` |
 
-Everything else is in the Settings screen: units, theme, accent color, voice, visualizer, home, Bluetooth pairing.
+Everything else is in the Settings screen: units, theme, accent color, voice, visualizer, home, Wi-Fi networks,
+data use (Auto saves data on a metered connection like a phone hotspot; Offline never goes online), phone
+notification privacy, and Bluetooth pairing. `tools/selftest.py` on the Pi checks every part (deploy.sh runs it).
 
 ## Develop
 

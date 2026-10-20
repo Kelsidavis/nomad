@@ -58,7 +58,7 @@ EOT
 
 echo "== head unit UI"
 mkdir -p /opt/headunit
-cp -r "$REPO"/headunit/server.py "$REPO"/headunit/offline.py "$REPO"/headunit/intent.py "$REPO"/headunit/tts_server.py "$REPO"/headunit/radio.py "$REPO"/headunit/bt.py "$REPO"/headunit/config.py "$REPO"/headunit/emergency.py "$REPO"/headunit/static "$REPO"/headunit/headunit-kiosk.sh /opt/headunit/
+cp -r "$REPO"/headunit/server.py "$REPO"/headunit/offline.py "$REPO"/headunit/intent.py "$REPO"/headunit/tts_server.py "$REPO"/headunit/radio.py "$REPO"/headunit/bt.py "$REPO"/headunit/config.py "$REPO"/headunit/emergency.py "$REPO"/headunit/network.py "$REPO"/headunit/static "$REPO"/headunit/headunit-kiosk.sh /opt/headunit/
 chmod 755 /opt/headunit/headunit-kiosk.sh
 mkdir -p /opt/headunit/tools && cp "$REPO"/headunit/tools/sat_passes.py "$REPO"/headunit/tools/sstv_decode.py "$REPO"/headunit/tools/fetch_emergency.py "$REPO"/headunit/tools/bench_intents.py /opt/headunit/tools/
 # satellite passes and SSTV pictures for the radio tab: sgp4 and sstv in their own venv
@@ -80,6 +80,15 @@ install -o "$U" -g "$U" -m 644 "$REPO"/headunit/headunit.desktop "$H/.config/aut
 
 echo "== offline routing image (Valhalla)"
 docker image inspect ghcr.io/valhalla/valhalla:3.9.1 >/dev/null 2>&1 || docker pull -q ghcr.io/valhalla/valhalla:3.9.1
+
+echo "== Wi-Fi from Settings: the netdev group may manage networks without a password"
+usermod -aG netdev "$U"
+cat > /etc/polkit-1/rules.d/50-nomad-network.rules <<'EOT'
+// NOMAD: the head unit (its user is in netdev) picks Wi-Fi networks from its Settings screen.
+polkit.addRule(function (action, subject) {
+  if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0 && subject.isInGroup("netdev")) return polkit.Result.YES;
+});
+EOT
 
 echo "== faster boot"
 # Nothing here needs the internet, and in the car there is usually no Wi-Fi: waiting for it held up Docker

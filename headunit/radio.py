@@ -242,23 +242,24 @@ def _cached(path, url, max_age_s):
         return (path.read_bytes(), age) if age is not None else None
 
 
-def radar_tile(z, x, y):
+def radar_tile(z, x, y, offline=False):
     """NEXRAD base reflectivity (NOAA's RIDGE 1 km mosaic) as a 256 px web-mercator tile, refreshed every 4 min."""
     if not (0 <= z <= 10 and 0 <= x < 2 ** z and 0 <= y < 2 ** z):
         raise ValueError("radar tiles go to zoom 10")
     half = 20037508.342789244
     span = 2 * half / 2 ** z
     x0, y1 = -half + x * span, half - y * span
-    got = _cached(WX_CACHE / "radar" / str(z) / str(x) / f"{y}.png", RADAR.format(x0, y1 - span, x0 + span, y1), 240)
+    got = _cached(WX_CACHE / "radar" / str(z) / str(x) / f"{y}.png", RADAR.format(x0, y1 - span, x0 + span, y1),
+                  10 ** 9 if offline else 240)
     return got[0] if got else EMPTY_PNG
 
 
-def goes_image(view):
-    """(jpeg, age in seconds) of the latest GOES image for a view in GOES, or None."""
+def goes_image(view, offline=False):
+    """(jpeg, age in seconds) of the latest GOES image for a view in GOES, or None. offline: only what's cached."""
     if view not in GOES:
         raise ValueError(f"view must be one of {', '.join(GOES)}")
     v = GOES[view]
-    return _cached(WX_CACHE / f"goes-{view}.jpg", f"{STAR}/{v['dir']}/{v['latest']}", 600)
+    return _cached(WX_CACHE / f"goes-{view}.jpg", f"{STAR}/{v['dir']}/{v['latest']}", 10 ** 9 if offline else 600)
 
 
 def update_animation(view):
@@ -519,15 +520,18 @@ def weather_loop(where):
     """Keep the weather ready for when there's no signal: every 10 minutes, the GOES-18 pictures, the forecast and
     alerts (for where() = (lat, lon)) and the satellite orbits, whenever there's a connection. Each fetch is skipped
     while its copy is still fresh, and a failure (offline) just leaves the last copy."""
+    import network  # (here: radio.py is also used on its own by tools)
     while True:
-        for view in GOES:
-            goes_image(view)
-            try:
-                update_animation(view)
-            except (OSError, ValueError, StopIteration):
-                pass  # offline: the frames on hand still play
-        loc = where()
-        if loc:
-            forecast(*loc)
-        refresh_tle()
+        if network.allowed("background"):  # the pictures are a few MB an hour: not on a metered connection
+            for view in GOES:
+                goes_image(view)
+                try:
+                    update_animation(view)
+                except (OSError, ValueError, StopIteration):
+                    pass  # offline: the frames on hand still play
+        if network.allowed("ask"):  # the forecast and orbits are a few KB
+            loc = where()
+            if loc:
+                forecast(*loc)
+            refresh_tle()
         time.sleep(600)

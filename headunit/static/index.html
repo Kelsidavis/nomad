@@ -34,6 +34,8 @@
   <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM7 9h10v2H7zm6 5H7v-2h6zm4-6H7V6h10z"/></symbol>
   <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 21a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-1H9zm3-19a7 7 0 0 0-4 12.7V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.3A7 7 0 0 0 12 2z"/></symbol>
   <symbol id="i-sos" viewBox="0 0 24 24"><path d="M1 21h22L12 2zm12-3h-2v-2h2zm0-4h-2v-4h2z"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm6.9 6h-3a15.6 15.6 0 0 0-1.4-3.6A8 8 0 0 1 18.9 8zM12 4a14 14 0 0 1 1.9 4h-3.8A14 14 0 0 1 12 4zM4.3 14a8.2 8.2 0 0 1 0-4h3.4a16.5 16.5 0 0 0 0 4zm.8 2h3a15.6 15.6 0 0 0 1.4 3.6A8 8 0 0 1 5.1 16zm3-8h-3a8 8 0 0 1 4.4-3.6A15.6 15.6 0 0 0 8.1 8zM12 20a14 14 0 0 1-1.9-4h3.8A14 14 0 0 1 12 20zm2.3-6H9.7a14.7 14.7 0 0 1 0-4h4.6a14.7 14.7 0 0 1 0 4zm.3 5.6a15.6 15.6 0 0 0 1.4-3.6h3a8 8 0 0 1-4.4 3.6zm1.7-5.6a16.5 16.5 0 0 0 0-4h3.4a8.2 8.2 0 0 1 0 4z"/></symbol>
+  <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M1 9l2 2a12.7 12.7 0 0 1 18 0l2-2A15.5 15.5 0 0 0 1 9zm8 8 3 3 3-3a4.2 4.2 0 0 0-6 0zm-4-4 2 2a7 7 0 0 1 10 0l2-2a9.9 9.9 0 0 0-14 0z"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></symbol>
   <symbol id="i-eq" viewBox="0 0 24 24"><path d="M7 18h2V6H7zm4 4h2V2h-2zm-8-8h2v-4H3zm12 4h2V6h-2zm4-8v4h2v-4z"/></symbol>
   <symbol id="i-chev-left" viewBox="0 0 24 24"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4-4.6-4.6z"/></symbol>
@@ -70,6 +72,7 @@
     <div class="rail-spacer"></div>
     <div id="status-icons">
       <svg id="st-gps" class="st off"><title>GPS</title><use href="#i-gps"/></svg>
+      <svg id="st-net" class="st off"><title>Offline</title><use href="#i-globe"/></svg>
       <svg id="st-phone" class="st off"><title>Phone</title><use href="#i-phone"/></svg>
       <svg id="st-power" class="st warn" hidden><title>Under-voltage</title><use href="#i-bolt"/></svg>
     </div>
@@ -294,6 +297,19 @@
       <div class="setting">
         <span>Clock</span>
         <div class="seg" data-setting="clock"><button data-v="12">12 h</button><button data-v="24">24 h</button></div>
+      </div>
+      <div class="setting stack">
+        <div class="setting-row"><span>Wi-Fi<small id="wifi-state">…</small></span>
+          <button class="btn" id="wifi-btn" data-action="wifi-list">Choose network</button></div>
+        <div class="list wifi-list" id="wifi-list" hidden></div>
+      </div>
+      <div class="setting stack">
+        <span>Data use<small id="data-note"></small></span>
+        <div class="seg" id="data-seg"><button data-v="auto">Auto</button><button data-v="normal">Normal</button><button data-v="saver">Saver</button><button data-v="offline">Offline</button></div>
+      </div>
+      <div class="setting stack">
+        <span>Phone notifications<small>What shows when the phone is linked: hide the content to keep messages private</small></span>
+        <div class="seg" data-setting="notify"><button data-v="show">Show</button><button data-v="hide">Hide content</button><button data-v="off">Off</button></div>
       </div>
       <div class="setting">
         <span>Bluetooth<small id="bt-state">…</small></span>

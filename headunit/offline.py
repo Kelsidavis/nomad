@@ -87,6 +87,35 @@ def imagery_tile(name, z, x, y):
     return row[0] if row else None
 
 
+def nearest_town(lat, lon):
+    """Where we are, in words: {"name", "kind", "km", "dir"} for the closest city, town or village (offline), or
+    None. "dir" is the compass direction from the town to us."""
+    db_path = DATA / "search.sqlite"
+    if not db_path.exists():
+        return None
+    db = _db(db_path)
+    rows = db.execute("SELECT name, kind, lat, lon, rank FROM places WHERE rank >= 6 AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?",
+                      (lat - 0.5, lat + 0.5, lon - 0.7, lon + 0.7)).fetchall()
+    best = None
+    for name, kind, la, lo, rank in rows:
+        d = _km(lat, lon, la, lo)
+        # a city counts as "closer" than a village at the same distance: people say "near Portland"
+        score = d / (1 + (rank - 6) * 0.35)
+        if best is None or score < best[0]:
+            best = (score, name, kind, la, lo, d)
+    if not best:
+        return None
+    _, name, kind, la, lo, d = best
+    b = (math.degrees(math.atan2(math.radians(lon - lo) * math.cos(math.radians(la)), math.radians(lat - la))) + 360) % 360
+    return {"name": name, "kind": kind, "km": round(d, 1), "dir": ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][round(b / 45) % 8]}
+
+
+def _km(lat1, lon1, lat2, lon2):
+    p = math.pi / 180
+    a = 0.5 - math.cos((lat2 - lat1) * p) / 2 + math.cos(lat1 * p) * math.cos(lat2 * p) * (1 - math.cos((lon2 - lon1) * p)) / 2
+    return 12742 * math.asin(math.sqrt(a))
+
+
 # --- search -------------------------------------------------------------------------------------
 
 # Spoken and written short forms, matched both ways ("mt st helens" finds "Mount Saint Helens").

@@ -43,6 +43,7 @@ import radio  # noqa: E402
 import config  # noqa: E402
 import bt  # noqa: E402
 import emergency  # noqa: E402
+import network  # noqa: E402
 
 PORT = int(os.environ.get("HEADUNIT_PORT", 8800))
 BIND = os.environ.get("HEADUNIT_BIND", "127.0.0.1")
@@ -58,7 +59,12 @@ mimetypes.add_type("video/webm", ".mkv")  # Chromium plays Matroska under this t
 USER_AGENT = "pi-headunit/0.1 (personal car head unit)"
 TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 TILE_MAX_AGE_S = 30 * 86400
-OFFLINE_ONLY = os.environ.get("HEADUNIT_OFFLINE") == "1"
+class _Offline:  # truthy when online fallbacks aren't allowed: HEADUNIT_OFFLINE=1, or Settings → Data use (network.py)
+    def __bool__(self):
+        return not network.allowed("ask")
+
+
+OFFLINE_ONLY = _Offline()
 SIM = os.environ.get("HEADUNIT_SIM") == "1"  # testing indoors: POST /api/sim sets a fake position
 HOME = config.home()  # for satellite passes and weather with no GPS fix and no home set in Settings
 HOME_FILE = pathlib.Path.home() / ".local/share/headunit/home.json"  # the home the driver set (POST /api/home)
@@ -96,6 +102,7 @@ class State:
         self.tpv = None          # gpsd fix, with "recv" = our receive time
         self.sky = {}
         self.speaking = False    # a spoken prompt is playing (the page ducks the music)
+        self.online = None       # internet reachable, checked every minute (net_loop)
         self.gforce = None       # [lateral, longitudinal] in g, from successive GPS fixes (gforce_from_gps)
         self.gpsd_up = False
         self.phone_all = None    # DashLink /all, with "recv"
@@ -135,6 +142,8 @@ class State:
             return {
                 "t": now,
                 "speaking": self.speaking,
+                "online": self.online,
+                "data": network.data_use()["effective"],
                 "quake_alerts": [{k: q[k] for k in ("id", "mag", "place", "km", "tsunami", "time")} for q in emergency.alerts()[:3]],
                 "position": self.position(now),
                 "gps": {"gpsd": self.gpsd_up, "mode": (self.tpv or {}).get("mode", 0),
@@ -509,6 +518,24 @@ def terrain_online(z, x, y):
     return data
 
 
+def net_loop():
+    """Is there internet? A HEAD to the weather service every minute (it's used anyway); for the rail's status light."""
+    while True:
+        if not network.allowed("ask"):  # Data use: Offline means not even this
+            state.set(online=None)
+            time.sleep(60)
+            continue
+        try:
+            req = urllib.request.Request("https://api.weather.gov/", method="HEAD", headers={"User-Agent": USER_AGENT})
+            urllib.request.urlopen(req, timeout=8).close()
+            state.set(online=True)
+        except urllib.error.HTTPError:
+            state.set(online=True)  # it answered
+        except (OSError, urllib.error.URLError):
+            state.set(online=False)
+        time.sleep(60)
+
+
 def here():
     """(lat, lon) for satellite passes and weather: the GPS fix, else home; None when neither is known."""
     p = state.position(time.time())
@@ -669,6 +696,10 @@ class Handler(BaseHTTPRequestHandler):
                     for q in emergency.quakes()]}, cache="max-age=60")
             if path.startswith("/emergency/"):  # /emergency/zones.geojson etc.: tsunami evacuation layers
                 return self.file(emergency.layer_path(path[11:].removesuffix(".geojson")), "max-age=86400")
+            if path == "/api/where":  # ?lat=&lon=: the nearest town, for "where are we?" and the assistant's context
+                return self.send(200, offline.nearest_town(float(q["lat"]), float(q["lon"])) or {})
+            if path == "/api/wifi":  # networks around, the one we're on, and the data-use setting
+                return self.send(200, network.wifi(q.get("rescan") == "1"))
             if path == "/api/config":  # what the page needs from nomad.conf
                 return self.send(200, {"name": config.NAME})
             if path == "/api/bt":
@@ -684,13 +715,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.radio_stream(multi.get("f", []), q.get("mode", "wbfm"), q.get("sq", 0), q.get("label", ""))
             if path.startswith("/wx/radar/"):  # /wx/radar/z/x/y.png
                 z, x, y = (int(v) for v in path[len("/wx/radar/"):].removesuffix(".png").split("/"))
-                return self.send(200, radio.radar_tile(z, x, y), "image/png", "max-age=240")
+                return self.send(200, radio.radar_tile(z, x, y, offline=not network.allowed("ask")), "image/png", "max-age=240")
             if path == "/api/wx/goes/frames":  # ?view=: the animation frames on hand
                 return self.send(200, {"frames": radio.goes_frames(q.get("view", "pnw"))})
             if path == "/api/wx/goes/frame":  # ?view=&stamp=
                 return self.file(radio.goes_frame(q.get("view", "pnw"), q.get("stamp")), "max-age=86400")
             if path == "/api/wx/goes":  # ?view=pnw|pnw-ir|west|fd|fd-east
-                got = radio.goes_image(q.get("view", "pnw"))
+                got = radio.goes_image(q.get("view", "pnw"), offline=not network.allowed("ask"))
                 if not got:
                     return self.send(503, {"error": "no GOES image yet (needs internet once)"})
                 self.send_response(200)
@@ -802,6 +833,13 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/sim" and SIM:
                 state.set(sim=self.body_json() or None)
                 return self.send(200, {"ok": True})
+            if path == "/api/wifi/connect":  # {ssid, password}
+                body = self.body_json()
+                return self.send(200, network.connect(body["ssid"], body.get("password") or None))
+            if path == "/api/wifi/forget":  # {ssid}
+                return self.send(200, network.forget(self.body_json()["ssid"]))
+            if path == "/api/data":  # {mode: auto | normal | saver | offline}
+                return self.send(200, network.set_data_use(self.body_json().get("mode")))
             if path == "/api/bt/pair":
                 return self.send(200, bt.pair())
             if path == "/api/bt/forget":  # {mac}
@@ -975,7 +1013,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
                  lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here),
-                 lambda: radio.weather_loop(here)):
+                 lambda: radio.weather_loop(here), net_loop):
         threading.Thread(target=loop, daemon=True).start()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True

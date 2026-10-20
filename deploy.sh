@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 : "${PI_HOST:?set PI_HOST in nomad.conf}"
 echo "== $PI_HOST"
 rsync -rlt --delete --exclude __pycache__ --exclude '*.pyc' \
-    headunit/server.py headunit/offline.py headunit/intent.py headunit/radio.py headunit/bt.py headunit/config.py headunit/emergency.py \
+    headunit/server.py headunit/offline.py headunit/intent.py headunit/radio.py headunit/bt.py headunit/config.py headunit/emergency.py headunit/network.py \
     headunit/tts_server.py headunit/headunit-kiosk.sh headunit/static "$PI_HOST:/opt/headunit/"
 rsync -rlt headunit/tools/ "$PI_HOST:/opt/headunit/tools/" --exclude __pycache__
 rsync -rlt pi/*.py "$PI_HOST:/opt/dashlink/"
@@ -22,4 +22,7 @@ if [ "$1" = "--all" ]; then
 else
     ssh -t "$PI_HOST" 'sudo systemctl restart headunit'
 fi
+echo "== checking"
+sleep 6
+ssh "$PI_HOST" 'python3 /opt/headunit/tools/selftest.py --quick' || echo "(some checks failed: see above)"
 echo "== done: reload the screen (or it reloads itself when the server comes back)"
