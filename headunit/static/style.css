@@ -50,6 +50,8 @@ svg { width: 1.5rem; height: 1.5rem; fill: currentColor; flex: none; }
 #rail { background: var(--rail); display: flex; flex-direction: column; align-items: center;
   padding: 0.9rem 0; gap: 0.5rem; border-right: 1px solid var(--line); }
 #clock { font-size: 1.35rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 0.6rem; font-variant-numeric: tabular-nums; }
+#rail-temp { margin: -0.5rem 0 0.5rem; font-size: 0.85rem; color: var(--text-2); font-variant-numeric: tabular-nums; }
+#rail-temp[hidden] { display: none; }
 .rail-btn { width: 3.8rem; height: 3.8rem; border-radius: 1.2rem; display: grid; place-items: center; color: var(--text-2); }
 .rail-btn svg { width: 1.9rem; height: 1.9rem; }
 .rail-btn.active { background: var(--card-2); color: var(--text); }

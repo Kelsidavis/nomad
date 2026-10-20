@@ -3861,6 +3861,11 @@ for (const seg of $$(".seg[data-setting]")) {
 
 function tick() {
   $("#clock").textContent = fmtClock(new Date());
+  // the temperature now (this hour's forecast), under the clock on every screen
+  const now = (radio.weather?.hourly || []).find((h) => new Date(h.t).getTime() + 3600000 > Date.now());
+  const t = now?.temp ?? radio.weather?.periods?.[0]?.temperature;
+  $("#rail-temp").hidden = t == null;
+  if (t != null) $("#rail-temp").textContent = settings.units === "imperial" ? `${t}°` : `${Math.round((t - 32) * 5 / 9)}°`;
   applyTheme();
 }
 tick();
