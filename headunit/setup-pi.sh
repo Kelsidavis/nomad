@@ -106,6 +106,11 @@ install -o "$U" -g "$U" -d "$H/.config/labwc"
 install -o "$U" -g "$U" -m 644 "$REPO"/headunit/labwc-autostart "$H/.config/labwc/autostart"
 sed -i "s/^#\?autologin-user=.*/autologin-user=$U/; s/^#\?autologin-session=.*/autologin-session=nomad/; s/^#\?user-session=.*/user-session=nomad/" /etc/lightdm/lightdm.conf
 
+echo "== watchdog (a frozen Pi reboots itself) and a small log kept across reboots"
+mkdir -p /etc/systemd/system.conf.d /etc/systemd/journald.conf.d /var/log/journal
+printf '[Manager]\nRuntimeWatchdogSec=15\nRebootWatchdogSec=2min\n' > /etc/systemd/system.conf.d/nomad-watchdog.conf
+printf '[Journal]\nStorage=persistent\nSystemMaxUse=30M\nSyncIntervalSec=30s\n' > /etc/systemd/journald.conf.d/nomad.conf
+
 echo "== faster boot"
 # Nothing here needs the internet, and in the car there is usually no Wi-Fi: waiting for it held up Docker
 # (and so offline routing) at every boot. cloud-init only matters on the first boot; packagekit is desktop updates.
