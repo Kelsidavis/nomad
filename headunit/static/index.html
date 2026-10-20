@@ -172,12 +172,15 @@
         <section class="browser">
           <div class="media-tabs" id="media-tabs">
             <button data-tab="artists">Artists</button><button data-tab="albums">Albums</button>
-            <button data-tab="songs">Songs</button><button data-tab="videos">Videos</button>
+            <button data-tab="songs">Songs</button><button data-tab="browse">Browse</button>
+            <button data-tab="playlists">Playlists</button><button data-tab="videos">Videos</button>
             <button class="icon-btn" data-action="media-search" aria-label="Search music"><svg><use href="#i-search"/></svg></button>
           </div>
           <div class="media-crumb" id="media-crumb" hidden>
             <button class="icon-btn" data-action="media-back" aria-label="Back"><svg><use href="#i-chev-left"/></svg></button>
             <span id="crumb-title"></span>
+            <button class="btn" data-action="media-save" id="crumb-save"><svg><use href="#i-plus"/></svg>Save</button>
+            <button class="btn danger" data-action="media-delete" id="crumb-delete" hidden>Delete</button>
             <button class="btn" data-action="media-shuffle" id="crumb-shuffle"><svg><use href="#i-shuffle"/></svg>Shuffle</button>
             <button class="btn primary" data-action="media-play" id="crumb-play"><svg><use href="#i-play"/></svg>Play</button>
           </div>
@@ -453,6 +456,7 @@
     </div>
     <div class="np-tools">
       <button class="btn" data-action="viz-cycle"><svg><use href="#i-eq"/></svg><span data-bind="viz-name">Bars</span></button>
+      <button class="btn" data-action="np-add"><svg><use href="#i-plus"/></svg>Playlist</button>
       <label class="volume"><svg><use href="#i-volume"/></svg><input type="range" min="0" max="100" data-bind="volume"></label>
     </div>
   </div>
@@ -468,6 +472,15 @@
   <button class="icon-btn cap-nav next" data-action="cap-next" aria-label="Next image"><svg><use href="#i-chev-left"/></svg></button>
   <button class="icon-btn cap-play" id="cap-play" data-action="goes-anim" aria-label="Play or pause" hidden><svg><use href="#i-play"/></svg></button>
   <audio id="cap-audio" controls hidden></audio>
+</div>
+
+<!-- Save to a playlist -->
+<div id="pl-sheet" class="overlay" hidden>
+  <div class="pl-box">
+    <div class="view-head"><h2>Save <small id="pl-count"></small></h2>
+      <button class="icon-btn" data-action="pl-close" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+    <div class="list" id="pl-list"></div>
+  </div>
 </div>
 
 <!-- Video player -->

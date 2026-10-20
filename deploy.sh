@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 : "${PI_HOST:?set PI_HOST in nomad.conf}"
 echo "== $PI_HOST"
 rsync -rlt --delete --exclude __pycache__ --exclude '*.pyc' \
-    headunit/server.py headunit/offline.py headunit/intent.py headunit/radio.py headunit/bt.py headunit/config.py headunit/emergency.py headunit/network.py \
+    headunit/server.py headunit/offline.py headunit/intent.py headunit/radio.py headunit/bt.py headunit/config.py headunit/emergency.py headunit/network.py headunit/music.py \
     headunit/tts_server.py headunit/headunit-kiosk.sh headunit/static "$PI_HOST:/opt/headunit/"
 rsync -rlt headunit/tools/ "$PI_HOST:/opt/headunit/tools/" --exclude __pycache__
 rsync -rlt pi/*.py "$PI_HOST:/opt/dashlink/"

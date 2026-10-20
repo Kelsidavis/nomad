@@ -68,11 +68,14 @@ def main():
                     "artist": t.get("originalTitle") or t.get("grandparentTitle") or "",
                     "album_artist": t.get("grandparentTitle") or "", "album": t.get("parentTitle") or "",
                     "title": t.get("title") or "", "track": t.get("index") or 0, "disc": t.get("parentIndex") or 1,
-                    "year": t.get("parentYear") or t.get("year") or 0}
+                    "year": t.get("parentYear") or t.get("year") or 0,
+                    # how popular the track is (Plex's play/listener count) and its length: for mixes
+                    "pop": t.get("ratingCount") or 0, "ms": t.get("duration") or 0}
                 if t.get("parentThumb"):
                     covers.setdefault(dest.parent / "cover.jpg", t["parentThumb"])
     index_tmp = out / ".library.json.tmp"
-    index_tmp.write_text(json.dumps({"source": "plex", "tracks": index}, ensure_ascii=False))
+    index_tmp.write_text(json.dumps({"source": "plex", "tracks": index, **tags(args.server, token, args.section)},
+                                    ensure_ascii=False))
     index_tmp.replace(out / "library.json")
     print(f"index: {len(index)} tracks in library.json", flush=True)
     fetch_covers(args.server, token, covers)
@@ -155,6 +158,27 @@ def main():
                           f"wrote {stats['written'] / 1e9:.1f} GB, {stats['fail']} failed, ETA {eta:.1f} h", flush=True)
     print(f"done: {stats}", flush=True)
     return 1 if stats["fail"] else 0
+
+
+def tags(server, token, section):
+    """Genres, styles, moods and similar artists from each artist's and album's full Plex record (the library
+    listing has only the broad genre): {"artists": {name: {...}}, "albums": {"artist\talbum": {...}}}."""
+    def tagged(m):
+        return {k.lower(): [g["tag"] for g in m.get(k, [])] for k in ("Genre", "Style", "Mood", "Similar", "Country")
+                if m.get(k)}
+    out = {"artists": {}, "albums": {}}
+    for kind, key in ((8, "artists"), (9, "albums")):
+        for item in plex(server, token, f"/library/sections/{section}/all", type=kind).get("Metadata", []):
+            try:
+                full = plex(server, token, f"/library/metadata/{item['ratingKey']}")["Metadata"][0]
+            except (OSError, KeyError, IndexError):
+                continue
+            if kind == 8:
+                out["artists"][full.get("title", "")] = tagged(full)
+            else:
+                out["albums"][f"{full.get('parentTitle', '')}\t{full.get('title', '')}"] = {**tagged(full), "year": full.get("year")}
+        print(f"tags: {len(out[key])} {key}", flush=True)
+    return out
 
 
 def fetch_covers(server, token, covers):

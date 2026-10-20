@@ -717,6 +717,8 @@ function openSearch(text = "", mode = "places") {
   renderKeyboard();
   if (mode === "music") return loadMedia().then(() => showMusicSearch(query));
   if (mode === "pass") { showTyped(); return ($("#search-results").innerHTML = `<div class="empty">Password for “${escapeHtml(wifiTarget)}”, then Join.</div>`); }
+  if (mode === "vibe") return ($("#search-results").innerHTML = `<div class="empty">Describe it: “chill night drive”, “90s singalong”, “something like Fleetwood Mac”…</div>`);
+  if (mode === "plname") return ($("#search-results").innerHTML = `<div class="empty">Name the playlist, then Save.</div>`);
   if (mode === "chat") return ($("#search-results").innerHTML = `<div class="empty">Type a question, then tap Send.</div>`);
   if (mode === "freq") return ($("#search-results").innerHTML = `<div class="empty">Type a frequency: 98.5 (FM), 1190 (AM, in kHz), 155.34 or 162.55 (narrow FM).</div>`);
   if (query) runSearch(); else showSearchRecents();
@@ -733,7 +735,7 @@ function renderKeyboard() {
     }
     return `<div class="kb-row">${keys.join("")}</div>`;
   });
-  const go = { chat: "Send", pass: "Join" }[searchMode] || "Search";
+  const go = { chat: "Send", pass: "Join", vibe: "Mix", plname: "Save" }[searchMode] || "Search";
   rows.push(`<div class="kb-row"><button class="key wide" data-k="layer">${letters ? "123" : "ABC"}</button>
     <button class="key space" data-k=" ">space</button><button class="key wide go" data-k="go">${go}</button></div>`);
   kb.innerHTML = rows.join("");
@@ -781,6 +783,8 @@ async function runSearch() {
   if (searchMode === "freq") return tuneTyped(q);
   if (searchMode === "chat") { closeSearch(); return askAssistant(q); }
   if (searchMode === "pass") { closeSearch(); return wifiJoin(wifiTarget, query); }
+  if (searchMode === "vibe") { closeSearch(); return q && makeVibe(q); }
+  if (searchMode === "plname") { closeSearch(); return createPlaylist(q); }
   if (!q) return;
   const box = $("#search-results");
   box.innerHTML = `<div class="empty">Searching…</div>`;
@@ -803,6 +807,7 @@ const media = {
   queue: [], order: [], pos: -1,  // queue: track indices being played; order: the queue's play order (shuffled or not)
   shuffle: load("shuffle", false), repeat: load("repeat", "off"),  // off | all | one
   tab: load("mediaTab", "artists"), stack: [],  // stack: drill-down levels inside the tab ({type, key})
+  categories: {}, playlists: [], idIndex: new Map(),
   flip: false,  // the player folded or unfolded against this list's default (tapping the art or title)
 };
 const fold = (s) => s.normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[‐‑–—]/g, "-").toLowerCase();
@@ -813,7 +818,7 @@ const curTrack = () => media.tracks[media.queue[media.order[media.pos]]];
 async function loadMedia(force) {
   if (!force && Date.now() - media.loaded < 60000) return;
   try {
-    const { cols, rows, videos } = await api("/api/media");
+    const { cols, rows, videos, categories } = await api("/api/media");
     media.tracks = rows.map((r) => {
       const t = Object.fromEntries(cols.map((c, i) => [c, r[i]]));
       t.folder = `${t.album_artist} ${t.album}`;  // what voice search matches on, with the title
@@ -821,6 +826,9 @@ async function loadMedia(force) {
       return t;
     });
     media.videos = videos;
+    media.categories = categories || {};
+    media.idIndex = new Map(media.tracks.map((t, i) => [t.id, i]));
+    await loadPlaylists();
     indexLibrary();
     media.loaded = Date.now();
     api("/api/volume").then((v) => v.level != null && bind("volume", v.level)).catch(() => {});
@@ -857,7 +865,7 @@ function indexLibrary() {
 }
 
 // ---- browser ----
-const TABS = { artists: "Artists", albums: "Albums", songs: "Songs", videos: "Videos" };
+const TABS = { artists: "Artists", albums: "Albums", songs: "Songs", browse: "Browse", playlists: "Playlists", videos: "Videos" };
 function renderBrowser() {
   for (const b of $$("#media-tabs [data-tab]")) b.classList.toggle("on", b.dataset.tab === media.tab && !media.stack.length);
   const level = media.stack[media.stack.length - 1];
@@ -879,11 +887,31 @@ function renderBrowser() {
     rows = level.results;
     kind = "mixed";
     $("#crumb-title").textContent = `“${level.q}”`;
+  } else if (level?.type === "tags") {  // every mood (or style...)
+    rows = (media.categories?.[level.key] || []).map(([tag, n]) => ({ kind: "tag", tagKind: level.key, tag, n }));
+    kind = "browse";
+    $("#crumb-title").textContent = TAG_TITLES[level.key];
+  } else if (level && ["tag", "mix", "playlist"].includes(level.type)) {
+    rows = levelTracks(level);
+    kind = "track";
+    $("#crumb-title").textContent = level.type === "playlist" ? media.playlists.find((p) => p.id === level.key)?.name || "" : level.title;
+  } else if (media.tab === "browse") {
+    rows = browseRows();
+    kind = "browse";
+  } else if (media.tab === "playlists") {
+    rows = media.playlists || [];
+    kind = "playlist";
   } else {
     kind = { artists: "artist", albums: "album", songs: "track", videos: "video" }[media.tab];
     rows = { artists: media.artists, albums: media.albums, songs: media.songs, videos: media.videos }[media.tab] || [];
   }
-  $("#crumb-play").hidden = $("#crumb-shuffle").hidden = !level || level.type === "search";
+  const tracksHere = !!level && !["search", "tags"].includes(level.type);
+  $("#crumb-play").hidden = $("#crumb-shuffle").hidden = !tracksHere;
+  $("#crumb-save").hidden = !level || level.type === "tags" || level.type === "playlist";
+  $("#crumb-delete").hidden = level?.type !== "playlist";
+  if (media.tab === "playlists" && !level && !rows.length) {
+    return ($("#media-list").innerHTML = `<div class="empty">No playlists yet. Open an album, a mood or a vibe mix and tap <b>Save</b>, or tap ＋ while a song plays.</div>`);
+  }
   if (!rows.length) {
     const msg = media.tab === "videos" && !level
       ? "No videos yet. Put video files in <b>~/Videos</b> on the Pi."
@@ -898,6 +926,8 @@ function mediaRow(kind, item) {
   b.className = "list-item media-row";
   let art = "", t = "", s = "", onclick;
   if (kind === "mixed") return mediaRow(item.kind, item.item);
+  if (kind === "browse") return browseRow(item);
+  if (kind === "playlist") return playlistRow(item);
   if (kind === "artist") {
     art = item.albums.find((a) => a.art)?.art || "";
     t = item.name;
@@ -917,8 +947,7 @@ function mediaRow(kind, item) {
     s = kind === "track" ? `${tr.artist} · ${tr.album}` : tr.artist !== tr.album_artist ? tr.artist : "";
     onclick = () => {
       const level = media.stack[media.stack.length - 1];
-      const list = level?.type === "album" ? media.albums.find((a) => a.key === level.key).tracks
-        : level?.type === "search" ? level.results.filter((r) => r.kind === "track").map((r) => r.item) : media.songs;
+      const list = level ? levelTracks(level) : media.songs;
       playQueue(list, list.indexOf(item));
     };
     if (curTrack() === tr) b.classList.add("playing");
@@ -992,12 +1021,124 @@ function mediaBack() {
   renderBrowser();
 }
 function playLevel(shuffled) {
-  const level = media.stack[media.stack.length - 1];
-  const list = level.type === "album" ? media.albums.find((a) => a.key === level.key).tracks
-    : media.artists.find((a) => a.key === level.key).albums.flatMap((al) => al.tracks);
+  const list = levelTracks(media.stack[media.stack.length - 1]);
+  if (!list.length) return;
   if (shuffled !== media.shuffle) toggleShuffle();
   playQueue(list, media.shuffle ? -1 : 0);
 }
+
+// ---- browse (moods, styles, genres, decades, vibe mixes) and playlists (music.py) ----
+const VIBES = ["Chill drive", "Road trip singalong", "Workout energy", "Late night", "Sunday morning", "Rainy day", "Party"];
+const TAG_TITLES = { mood: "Moods", style: "Styles", decade: "Decades", genre: "Genres" };
+const levelTracks = (level) => level.type === "album" ? media.albums.find((a) => a.key === level.key)?.tracks || []
+  : level.type === "artist" ? (media.artists.find((a) => a.key === level.key)?.albums || []).flatMap((al) => al.tracks)
+  : level.type === "search" ? level.results.filter((r) => r.kind === "track").map((r) => r.item)
+  : level.type === "playlist" ? (media.playlists.find((p) => p.id === level.key)?.tracks || []).map((id) => media.idIndex.get(id)).filter((i) => i != null)
+  : level.tracks || [];
+function browseRows() {
+  const rows = [{ kind: "vibe-ask" }, ...VIBES.map((v) => ({ kind: "vibe", text: v }))];
+  for (const [k, title] of Object.entries(TAG_TITLES)) {
+    const tags = media.categories?.[k] || [];
+    if (!tags.length) continue;
+    rows.push({ kind: "head", text: title, more: tags.length > 8 ? k : null });
+    rows.push(...(k === "decade" ? tags : tags.slice(0, 8)).map(([tag, n]) => ({ kind: "tag", tagKind: k, tag, n })));
+  }
+  return rows;
+}
+function browseRow(r) {
+  if (r.kind === "head") {
+    const d = document.createElement("div");
+    d.className = "list-head";
+    d.innerHTML = `<span></span>${r.more ? `<button class="btn">All</button>` : ""}`;
+    d.querySelector("span").textContent = r.text;
+    if (r.more) d.querySelector("button").onclick = () => drill("tags", r.more);
+    return d;
+  }
+  const b = document.createElement("button");
+  b.className = "list-item media-row";
+  b.innerHTML = `<span class="thumb"><svg><use href="#i-${r.kind === "tag" ? "music" : "eq"}"/></svg></span><span class="txt"><span class="t"></span><span class="s"></span></span>`;
+  b.querySelector(".t").textContent = r.kind === "vibe-ask" ? "Describe a vibe…" : r.kind === "vibe" ? r.text : r.tag;
+  b.querySelector(".s").textContent = r.kind === "vibe-ask" ? "Type or say what you're in the mood for, and I'll make a mix"
+    : r.kind === "vibe" ? "Mix" : `${r.n} songs`;
+  if (r.kind !== "tag") b.classList.add("vibe-row");
+  b.onclick = () => (r.kind === "vibe-ask" ? openSearch("", "vibe") : r.kind === "vibe" ? makeVibe(r.text) : openTag(r.tagKind, r.tag));
+  return b;
+}
+async function openTag(kind, tag) {
+  const { tracks } = await api(`/api/media/tag?kind=${kind}&tag=${encodeURIComponent(tag)}`).catch(() => ({ tracks: [] }));
+  media.stack.push({ type: "tag", key: `${kind}:${tag}`, title: `${TAG_TITLES[kind].replace(/s$/, "")} · ${tag}`, tracks });
+  media.flip = false;
+  renderBrowser();
+}
+// A mix from a described vibe; plays it, and leaves it open to save as a playlist.
+async function makeVibe(text, play = true) {
+  toast(`Making a “${text}” mix…`, 20000);
+  let r;
+  try {
+    r = await api("/api/media/vibe", { json: { text } });
+  } catch (e) {
+    toast(`Couldn't make a mix: ${e.message}`);
+    return null;
+  }
+  $("#toast").hidden = true;
+  if (!r.tracks.length) { toast(`Nothing in the library fits “${text}”`); return null; }
+  showView("media");
+  media.stack = [{ type: "mix", key: `mix:${Date.now()}`, title: r.name, tracks: r.tracks }];
+  media.flip = false;
+  renderBrowser();
+  if (play) playQueue(r.tracks, 0);
+  return r;
+}
+async function loadPlaylists() {
+  media.playlists = (await api("/api/playlists").catch(() => ({ playlists: [] }))).playlists;
+}
+function playlistRow(p) {
+  const b = document.createElement("button");
+  b.className = "list-item media-row";
+  const first = p.tracks.map((id) => media.idIndex.get(id)).find((i) => i != null && media.tracks[i].art);
+  b.innerHTML = `<span class="thumb"><svg><use href="#i-music"/></svg></span><span class="txt"><span class="t"></span><span class="s"></span></span>`;
+  if (first != null) { b.querySelector(".thumb").style.backgroundImage = `url("${artUrl(media.tracks[first])}")`; b.querySelector(".thumb").innerHTML = ""; }
+  b.querySelector(".t").textContent = p.name;
+  b.querySelector(".s").textContent = `${p.tracks.length} song${p.tracks.length === 1 ? "" : "s"}`;
+  b.onclick = () => drill("playlist", p.id);
+  return b;
+}
+// Save: the open album, artist, mix, category or search (or one song) into a playlist, new or existing.
+let pendingSave = [];
+function openSaveSheet(trackIdxs) {
+  pendingSave = trackIdxs.map((i) => media.tracks[i]?.id).filter(Boolean);
+  if (!pendingSave.length) return toast("Nothing to save");
+  const box = $("#pl-list");
+  const newRow = document.createElement("button");
+  newRow.className = "list-item media-row";
+  newRow.innerHTML = `<span class="thumb"><svg><use href="#i-plus"/></svg></span><span class="txt"><span class="t">New playlist…</span><span class="s">Name it with the keyboard</span></span>`;
+  newRow.onclick = () => { $("#pl-sheet").hidden = true; openSearch(media.stack.at(-1)?.title || "", "plname"); };
+  box.replaceChildren(newRow, ...media.playlists.map((p) => {
+    const b = playlistRow(p);
+    b.onclick = async () => {
+      media.playlists = (await api("/api/playlists/add", { json: { id: p.id, tracks: pendingSave } })).playlists;
+      $("#pl-sheet").hidden = true;
+      toast(`Added ${pendingSave.length} song${pendingSave.length === 1 ? "" : "s"} to ${p.name}`);
+    };
+    return b;
+  }));
+  $("#pl-count").textContent = `${pendingSave.length} song${pendingSave.length === 1 ? "" : "s"}`;
+  $("#pl-sheet").hidden = false;
+}
+async function createPlaylist(name) {
+  const r = await api("/api/playlists/create", { json: { name: name || "Playlist", tracks: pendingSave } }).catch((e) => toast(e.message));
+  if (!r) return;
+  media.playlists = r.playlists;
+  toast(`Saved “${r.created.name}”`);
+  renderBrowser();
+}
+async function deletePlaylist(id) {
+  const p = media.playlists.find((x) => x.id === id);
+  if (!p || !confirm(`Delete the playlist “${p.name}”?`)) return;
+  media.playlists = (await api("/api/playlists/delete", { json: { id } })).playlists;
+  mediaBack();
+}
+
 // Row height and the layout change with the screen: draw the list again.
 window.addEventListener("resize", () => { if (currentView === "media") renderBrowser(); });
 $("#media-tabs").addEventListener("click", (e) => {
@@ -2380,7 +2521,10 @@ async function runCommand(raw, fromModel = false) {
     await loadMedia();
     const hits = findMusic(m[1].replace(/ by /, " "), 1);  // an artist beats an album beats a song
     const h = hits[0];
-    if (!h) return `Nothing matching “${m[1]}”`;
+    if (!h || /^(something|anything|music|songs|stuff) /.test(m[1])) {  // "play something chill": a vibe mix
+      const r = await makeVibe(m[1].replace(/^(something|anything|music|songs|stuff) (for |that'?s |to )?/, ""));
+      return r ? `Playing a ${r.name} mix` : `Nothing matching “${m[1]}”`;
+    }
     if (h.kind === "artist") { if (!media.shuffle) toggleShuffle(); playQueue(h.item.albums.flatMap((al) => al.tracks), -1); return `Shuffling ${h.item.name}`; }
     if (h.kind === "album") { playQueue(h.item.tracks, 0); return `Playing ${h.item.name}`; }
     playIndex(h.item);
@@ -2499,6 +2643,10 @@ const ACTIONS = {
   shuffle: toggleShuffle,
   repeat: cycleRepeat,
   "media-back": mediaBack,
+  "media-save": () => openSaveSheet(levelTracks(media.stack.at(-1))),
+  "media-delete": () => deletePlaylist(media.stack.at(-1)?.key),
+  "np-add": () => { const t = curTrack(); if (t) openSaveSheet([media.idIndex.get(t.id)]); else toast("Nothing playing"); },
+  "pl-close": () => ($("#pl-sheet").hidden = true),
   "player-toggle": togglePlayer,
   "radio-up": () => radioNudge(1),
   "radio-down": () => radioNudge(-1),

@@ -552,6 +552,19 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 .key.on { background: var(--accent); color: var(--accent-text); }
 #search-overlay[data-mode="pass"] #search-text:empty::before { content: "Password"; }
 
+/* music: browse, playlists */
+.media-tabs [data-tab] { min-width: 0; padding: 0 0.3rem; font-size: 0.95rem; }
+.vibe-row .thumb { background: color-mix(in srgb, var(--accent) 30%, var(--card-2)); color: var(--accent); }
+#media-list .list-head { position: absolute; left: 0; right: 0; }
+#pl-sheet { display: grid; place-items: center; z-index: 2150; background: rgb(0 0 0 / 0.55); }
+#pl-sheet[hidden] { display: none; }
+.pl-box { width: min(32rem, 92vw); max-height: 80vh; display: flex; flex-direction: column; gap: 0.5rem; padding: 0.9rem;
+  border-radius: var(--radius); background: var(--bg); box-shadow: var(--shadow); }
+.pl-box h2 small { font-size: 0.9rem; color: var(--text-2); font-weight: 500; }
+.pl-box .list { min-height: 0; overflow-y: auto; }
+.pl-box .media-row { height: 3.8rem; }
+.media-crumb .btn svg { width: 1.1rem; height: 1.1rem; fill: currentColor; margin-right: 0.3rem; vertical-align: -0.15rem; }
+
 /* video: full screen */
 #video-stage { background: #000; display: grid; place-items: center; z-index: 2100; }
 #video-stage[hidden] { display: none; }

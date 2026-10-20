@@ -44,6 +44,7 @@ import config  # noqa: E402
 import bt  # noqa: E402
 import emergency  # noqa: E402
 import network  # noqa: E402
+import music  # noqa: E402
 
 PORT = int(os.environ.get("HEADUNIT_PORT", 8800))
 BIND = os.environ.get("HEADUNIT_BIND", "127.0.0.1")
@@ -478,7 +479,7 @@ def ordinal(n):
 
 # --- media -------------------------------------------------------------------------------------
 
-library = {"t": 0, "tracks": [], "videos": []}
+library = {"t": 0, "tracks": [], "videos": [], "tags": {"artists": {}, "albums": {}}}
 library_lock = threading.Lock()
 TRACK_NO = re.compile(r"^(?:(\d)[-.])?(\d{1,3})(?:\s*[-._]\s*|\s+)")  # "01 - Title", "1-03 Title", "07. Title"
 NOISE = re.compile(r"\s*\[[^\]]*\]|\s*\((?:[^)]*(?:flac|mp3|bit|khz|kbps|web|cd ?rip|discography)[^)]*)\)", re.I)
@@ -552,10 +553,14 @@ def scan_library():
     """Music and videos from the folder layout (Artist/Album/01 - Title.opus, as plex_music.py writes it).
     No tag reading: a walk of 25k files takes about a second, so it can simply run again."""
     tracks, videos = [], []
+    tags = {"artists": {}, "albums": {}}  # Plex's moods, styles, genres and similar artists, from library.json
     for root_i, root in enumerate(MEDIA_DIRS):
         is_music = root in MUSIC_DIRS
         try:
-            index = json.loads((root / "library.json").read_text()).get("tracks", {}) if is_music else {}
+            lib = json.loads((root / "library.json").read_text()) if is_music else {}
+            index = lib.get("tracks", {})
+            tags["artists"].update(lib.get("artists", {}))
+            tags["albums"].update(lib.get("albums", {}))
         except (OSError, ValueError):
             index = {}
         try:
@@ -574,6 +579,7 @@ def scan_library():
                             artist, album_artist = meta["artist"], meta["album_artist"] or meta["artist"]
                             album, title, year = meta["album"], meta["title"], meta["year"]
                             n = meta["disc"] * 1000 + meta["track"]
+                            pop = meta.get("pop", 0)
                         else:  # no index: make what we can of the folder names
                             m = TRACK_NO.match(stem)
                             title = stem[m.end():] if m and m.end() < len(stem) else stem
@@ -583,12 +589,13 @@ def scan_library():
                             album, year = clean_folder(parts[1] if len(parts) >= 2 else (parts[0] if parts else ""),
                                                        artist)
                             album_artist, title = artist, title.replace("_", " ").strip()
+                            pop = 0
                             n = (int(m.group(1) or 1) * 1000 + int(m.group(2))) if m else 0
                         tracks.append({
                             "id": rid, "title": title, "artist": artist, "album_artist": album_artist,
                             "album": album, "year": year, "n": n,
                             "folder": str(rel_dir) if parts else "",  # voice search matches on this too
-                            "art": f"{root_i}/{rel_dir}" if cover else "",
+                            "art": f"{root_i}/{rel_dir}" if cover else "", "pop": pop,
                         })
                     elif not is_music and ext in VIDEO_EXT:
                         videos.append({"id": rid, "title": stem.replace("_", " ").replace(".", " ").strip(),
@@ -598,9 +605,10 @@ def scan_library():
     # Sent as rows of a table: 25k tracks as objects would be 12 MB of JSON, as rows about a quarter of that.
     cols = ["id", "title", "artist", "album_artist", "album", "year", "n", "art"]
     body = json.dumps({"cols": cols, "rows": [[t[c] if c != "art" else int(bool(t["art"])) for c in cols]
-                                              for t in tracks], "videos": videos}, ensure_ascii=False).encode()
+                                              for t in tracks], "videos": videos,
+                       "categories": music.categories(tracks, tags)}, ensure_ascii=False).encode()
     with library_lock:
-        library.update(t=time.time(), tracks=tracks, videos=videos, body=body)
+        library.update(t=time.time(), tracks=tracks, videos=videos, body=body, tags=tags)
     return library
 
 
@@ -776,6 +784,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, media_library()["body"], "application/json")
             if path == "/api/volume":
                 return self.send(200, volume())
+            if path == "/api/media/tag":  # ?kind=mood|style|genre|decade&tag=: the tracks with it, as library indices
+                lib = media_library()
+                return self.send(200, {"tracks": music.tag_tracks(lib["tracks"], lib["tags"], q["kind"], q["tag"])})
+            if path == "/api/playlists":
+                return self.send(200, {"playlists": music.playlists()})
             if path == "/api/media/file":
                 return self.file(media_path(q["id"]))
             if path == "/api/media/art":
@@ -833,6 +846,24 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/sim" and SIM:
                 state.set(sim=self.body_json() or None)
                 return self.send(200, {"ok": True})
+            if path == "/api/media/vibe":  # {text}: a mix for a described vibe (the voice model picks the tags)
+                lib = media_library()
+                try:
+                    return self.send(200, music.vibe(self.body_json()["text"], lib["tracks"], lib["tags"]))
+                except (OSError, urllib.error.URLError) as e:
+                    return self.send(503, {"error": f"voice model not running: {e}"})
+            if path == "/api/playlists/create":  # {name, tracks: [track ids]}
+                body = self.body_json()
+                lists, pl = music.playlist_create(body.get("name"), body.get("tracks") or [])
+                return self.send(200, {"playlists": lists, "created": pl})
+            if path == "/api/playlists/add":  # {id, tracks}
+                body = self.body_json()
+                return self.send(200, {"playlists": music.playlist_add(body["id"], body.get("tracks") or [])})
+            if path == "/api/playlists/remove":  # {id, track}
+                body = self.body_json()
+                return self.send(200, {"playlists": music.playlist_remove_track(body["id"], body["track"])})
+            if path == "/api/playlists/delete":  # {id}
+                return self.send(200, {"playlists": music.playlist_delete(self.body_json()["id"])})
             if path == "/api/wifi/connect":  # {ssid, password}
                 body = self.body_json()
                 return self.send(200, network.connect(body["ssid"], body.get("password") or None))
