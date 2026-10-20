@@ -2892,6 +2892,7 @@ function weatherText() {
 function carContext() {
   const parts = [`${fmtClock(new Date(), true)}, ${new Date().toLocaleDateString([], { weekday: "long" })}`];
   if (whereNow) parts.push(whereText());
+  if (lastState?.road?.road) parts.push(`on ${lastState.road.road}${lastState.road.limit_kmh ? ` (limit ${settings.units === "imperial" ? Math.round(lastState.road.limit_kmh / 1.609344 / 5) * 5 + " mph" : lastState.road.limit_kmh + " km/h"})` : ""}`);
   if (weatherText()) parts.push(weatherText());
   if (nav.route && nav.dest) parts.push(`navigating to ${nav.dest.name}, arriving ${$("#nav-eta").textContent}, ${$("#nav-left-time").textContent} left`);
   const t = curTrack();
@@ -3014,6 +3015,13 @@ async function runCommand(raw, fromModel = false) {
     await loadMesh();
     const ms = (mesh.state?.messages || []).filter((x) => !x.mine).slice(-3);
     const msg = ms.length ? ms.map((x) => `${x.from_name} said: ${x.text}`).join(". ") : "No mesh messages";
+    say(msg);
+    return msg;
+  }
+  if (/speed limit/.test(text)) {
+    const r = lastState?.road, imp = settings.units === "imperial";
+    const msg = !r ? "I don't know which road we're on" : !r.limit_kmh ? `No speed limit mapped for ${r.road || "this road"}`
+      : `The limit on ${r.road || "this road"} is ${imp ? Math.round(r.limit_kmh / 1.609344 / 5) * 5 : r.limit_kmh} ${imp ? "miles per hour" : "kilometers per hour"}`;
     say(msg);
     return msg;
   }
