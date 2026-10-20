@@ -112,6 +112,9 @@ function fmtClock(d, ampm = false) {
   return `${h % 12 || 12}:${m}${ampm ? (h < 12 ? " AM" : " PM") : ""}`;
 }
 const speedVal = (mps) => (mps == null ? "--" : String(Math.round(Math.max(0, mps) * (settings.units === "imperial" ? 2.23694 : 3.6))));
+// The truck's own speed (OBD) when the adapter's connected: right at a crawl and with no GPS fix; else the GPS's.
+const speedNow = (s) => s?.obd?.v?.speed != null ? s.obd.v.speed / 3.6
+  : s?.position ? (s.position.speed_mps < 0.5 ? 0 : s.position.speed_mps) : null;
 const speedUnit = () => (settings.units === "imperial" ? "mph" : "km/h");
 const altVal = (m) => (m == null ? "--" : String(Math.round(settings.units === "imperial" ? m * 3.28084 : m)));
 const cardinal = (deg) => ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((deg % 360) + 360) % 360 / 45) % 8];
@@ -2631,8 +2634,7 @@ function onState(s) {
   $("#st-net").setAttribute("class", "st " + (s.data === "offline" ? "off" : s.online ? (s.data === "saver" ? "warn" : "ok") : "off"));
   $("#st-net title").textContent = s.data === "offline" ? "Offline (Settings → Data use)" : !s.online ? "Offline: maps, routing, voice and music still work"
     : s.data === "saver" ? "Online, saving data" : "Online";
-  const spd = p ? (p.speed_mps < 0.5 ? 0 : p.speed_mps) : null;
-  bind("speed", speedVal(spd));
+  bind("speed", speedVal(speedNow(s)));
   bind("speed-unit", speedUnit());
   bind("heading", p ? cardinal(heading) : "--");
   bind("altitude", altVal(p?.alt_m));
@@ -2791,7 +2793,7 @@ function carContext() {
   if (nav.route && nav.dest) parts.push(`navigating to ${nav.dest.name}, arriving ${$("#nav-eta").textContent}, ${$("#nav-left-time").textContent} left`);
   const t = curTrack();
   if (t && audio.src && !audio.paused) parts.push(`playing “${t.title}” by ${t.artist} from the album ${t.album}${t.year ? ` (${t.year})` : ""}`);
-  if (lastState?.position) parts.push(`${speedVal(lastState.position.speed_mps)} ${settings.units === "imperial" ? "mph" : "km/h"}`);
+  if (speedNow(lastState) != null) parts.push(`${speedVal(speedNow(lastState))} ${settings.units === "imperial" ? "mph" : "km/h"}`);
   return parts.join("; ");
 }
 
@@ -2868,7 +2870,7 @@ async function runCommand(raw, fromModel = false) {
   if (/(volume up|louder|turn it up)/.test(text)) { nudgeVolume(10); return "Volume up"; }
   if (/(volume down|quieter|turn it down)/.test(text)) { nudgeVolume(-10); return "Volume down"; }
   if (/(how fast|my speed|what speed)/.test(text)) {
-    const msg = lastState?.position ? `${speedVal(lastState.position.speed_mps)} ${settings.units === "imperial" ? "miles per hour" : "kilometers per hour"}` : "No GPS fix";
+    const msg = speedNow(lastState) != null ? `${speedVal(speedNow(lastState))} ${settings.units === "imperial" ? "miles per hour" : "kilometers per hour"}` : "No GPS fix";
     say(msg);
     return msg;
   }
