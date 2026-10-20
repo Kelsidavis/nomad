@@ -1269,7 +1269,14 @@ class Handler(BaseHTTPRequestHandler):
         return self.file(p, "no-cache")
 
 
+def _warm_vibe():
+    lib = media_library()
+    if lib["tracks"]:
+        music.vibe("warm up", lib["tracks"], lib["tags"], n=1)
+
+
 def main():
+    intent.WARMERS.append(_warm_vibe)  # the vibe prompt is the longest: cache it before the first mix
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
                  lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here),
                  lambda: radio.weather_loop(here), net_loop, news.news_loop, obd.obd_loop, mesh_loop, road_loop,

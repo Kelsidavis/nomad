@@ -143,12 +143,20 @@ def assistant_stream(messages, context="", think=True, timeout=300, llm=LLM):
                 yield "text", delta["content"]
 
 
+WARMERS = []  # more prompts to cache at start (server.py adds the music vibe prompt)
+
+
 def warm_loop():
     """Once llama-server is up, cache both system prompts before the driver speaks."""
     while True:
         try:
             command("Pause.", timeout=120)
             _complete([{"role": "system", "content": CHAT_SYSTEM}, {"role": "user", "content": "Hi"}], 1, 120, LLM)
+            for warm in WARMERS:  # other prompts that want to be ready (music.py's vibe mixes)
+                try:
+                    warm()
+                except Exception:  # noqa: BLE001  a warm-up is never worth failing over
+                    pass
             return
         except OSError:
             time.sleep(10)

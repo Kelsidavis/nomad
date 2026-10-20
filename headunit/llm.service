@@ -4,7 +4,9 @@ After=network.target
 ConditionPathExists=/home/k/models/gemma-4-E2B_q4_0-it.gguf
 
 [Service]
-ExecStart=/home/k/llama.cpp/build/bin/llama-server -m /home/k/models/gemma-4-E2B_q4_0-it.gguf -c 2048 -t 2 -np 1 --host 127.0.0.1 --port 8090 --jinja --no-webui \
+# Three slots of 2048 tokens: commands, chat and music mixes each keep their system prompt cached (one slot
+# re-read whichever prompt came last, 10-30 s); llama-server sends a request to the slot whose prompt matches.
+ExecStart=/home/k/llama.cpp/build/bin/llama-server -m /home/k/models/gemma-4-E2B_q4_0-it.gguf -c 6144 -t 2 -np 3 --host 127.0.0.1 --port 8090 --jinja --no-webui \
     --spec-type draft-mtp -md /home/k/models/ggml-org-mtp-gemma-4-E2B-it-Q4_0.gguf
 Restart=always
 RestartSec=5
