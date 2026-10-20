@@ -61,9 +61,10 @@
     <div id="clock">--:--</div>
     <button class="rail-btn active" data-view="home" aria-label="Home"><svg><use href="#i-home"/></svg></button>
     <button class="rail-btn" data-view="media" aria-label="Media"><svg><use href="#i-music"/></svg></button>
+    <button class="rail-btn" data-view="weather" aria-label="Weather"><svg><use href="#i-cloud"/></svg></button>
     <button class="rail-btn" data-view="radio" aria-label="Radio"><svg><use href="#i-radio"/></svg></button>
     <button class="rail-btn" data-view="assistant" aria-label="Assistant"><svg><use href="#i-chat"/></svg></button>
-    <button class="rail-btn" data-view="cameras" aria-label="Cameras"><svg><use href="#i-camera"/></svg></button>
+    <button class="rail-btn" data-view="cameras" aria-label="Cameras" hidden><svg><use href="#i-camera"/></svg></button>
     <button class="rail-btn" data-view="vehicle" aria-label="Vehicle"><svg><use href="#i-car"/></svg></button>
     <button class="rail-btn" data-view="settings" aria-label="Settings"><svg><use href="#i-settings"/></svg></button>
     <div class="rail-spacer"></div>
@@ -198,7 +199,7 @@
         <div class="radio-warn" id="radio-warn" hidden></div>
       </div>
       <div class="media-tabs" id="radio-tabs">
-        <button data-tab="fm">FM</button><button data-tab="am">AM</button><button data-tab="weather">Weather</button>
+        <button data-tab="fm">FM</button><button data-tab="am">AM</button><button data-tab="weather">NOAA</button>
         <button data-tab="scanner">Scanner</button><button data-tab="sats">Satellites</button>
       </div>
       <div class="list" id="radio-list"><div class="empty">Loading…</div></div>
@@ -219,6 +220,13 @@
         <button class="chat-field" data-action="chat-type">Ask anything…</button>
         <button class="btn danger" id="chat-stop" data-action="chat-stop" hidden>Stop</button>
       </div>
+    </div>
+
+    <!-- Weather: GOES pictures and animations, alerts, forecast -->
+    <div class="view" id="view-weather">
+      <div class="view-head"><h2>Weather</h2>
+        <button class="icon-btn" data-action="wx-refresh" aria-label="Refresh"><svg><use href="#i-locate"/></svg></button></div>
+      <div class="list" id="wx-list"><div class="empty">Loading…</div></div>
     </div>
 
     <!-- Emergency: tsunami zone, where to go, help and shelters nearby, earthquakes -->
@@ -442,6 +450,7 @@
     <button class="icon-btn" data-action="cap-close" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
   <button class="icon-btn cap-nav prev" data-action="cap-prev" aria-label="Previous image"><svg><use href="#i-chev-left"/></svg></button>
   <button class="icon-btn cap-nav next" data-action="cap-next" aria-label="Next image"><svg><use href="#i-chev-left"/></svg></button>
+  <button class="icon-btn cap-play" id="cap-play" data-action="goes-anim" aria-label="Play or pause" hidden><svg><use href="#i-play"/></svg></button>
   <audio id="cap-audio" controls hidden></audio>
 </div>
 

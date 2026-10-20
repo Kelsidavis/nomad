@@ -190,6 +190,7 @@ function showView(name) {
   setCameras(name === "cameras");
   if (name === "media") loadMedia();
   if (name === "radio") loadRadio();
+  if (name === "weather") loadWeather();
   if (name === "assistant") renderChat();
   if (name === "settings") paintBt();
   if (name === "emergency") loadEmergency();
@@ -1570,7 +1571,6 @@ async function loadRadio(force) {
     return;
   }
   renderRadio();
-  if (!radio.weather) api("/api/weather").then((w) => { radio.weather = w; if (radio.tab === "weather") renderRadio(); }).catch(() => {});
 }
 
 function renderRadio() {
@@ -1590,9 +1590,9 @@ function renderRadio() {
       else rows.push(note("Tap Scan to find the stations you can receive here, or tune with − and +."));
     } else rows.push(note("AM 530–1700 kHz. Tune with − and + (10 kHz), or tap the frequency to type one. The truck's antenna works best for AM."));
   } else if (radio.tab === "weather") {
-    rows.push(...weatherRows());
     rows.push(head("NOAA Weather Radio", "Scan all", () => tune({ freqs: chans("weather").map((c) => c.f), mode: "nfm", label: "Scanning NOAA weather" })));
     rows.push(...chans("weather").map((c) => chRow(c.name, `${freqText(c.f, "nfm")} · ${c.note}`, c)));
+    rows.push(note("The forecast, alerts and satellite pictures are in the Weather tab."));
   } else if (radio.tab === "scanner") {
     for (const [g, title] of Object.entries(info?.groups || {})) {
       if (g === "weather") continue;
@@ -1775,6 +1775,7 @@ function openCapture(c) {
   const pics = c.files.filter((f) => f.endsWith(".png"));
   if (c.preview) pics.sort((a, b) => (b === c.preview) - (a === c.preview));
   capView = { c, pics, i: 0 };
+  $("#cap-play").hidden = true;
   const clip = $("#cap-audio");
   clip.hidden = !c.files.includes("audio.opus");
   if (!clip.hidden) clip.src = capUrl(c, "audio.opus");
@@ -1782,7 +1783,11 @@ function openCapture(c) {
   showCapImage(0);
 }
 function showCapImage(d) {
-  if (!capView) return;  // a single picture (GOES)
+  if (!capView) return;
+  if (capView.goes) {  // step through the animation frames, paused
+    stopGoesAnim();
+    return loadGoesFrames(capView.view).then((ok) => ok && showGoesFrame((goesAnim.i + d + goesAnim.frames.length) % goesAnim.frames.length));
+  }
   const { c, pics } = capView;
   capView.i = pics.length ? (capView.i + d + pics.length) % pics.length : 0;
   const name = pics[capView.i];
@@ -1802,25 +1807,43 @@ const goesAnim = { timer: null, frames: [], i: 0, imgs: [] };
 function stopGoesAnim() {
   clearInterval(goesAnim.timer);
   goesAnim.timer = null;
-  $(".goes-play")?.classList.remove("on");
+  for (const b of $$(".goes-play, #cap-play")) b.classList.remove("on");
+  $("#cap-play use").setAttribute("href", "#i-play");
+}
+const goesViewerOpen = () => capView?.goes && !$("#cap-viewer").hidden;
+function showGoesFrame(i) {  // frame i of the loaded animation, on the card and in the viewer
+  const f = goesAnim.frames[i];
+  if (!f) return;
+  goesAnim.i = i;
+  const src = goesAnim.imgs[i].src, label = `${fmtClock(new Date(f.t * 1000), true)} · ${i + 1}/${goesAnim.frames.length}`;
+  const img = $(".goes-pic img");
+  if (img) img.src = src;
+  if ($(".goes-age")) $(".goes-age").textContent = label;
+  if (goesViewerOpen()) {
+    $("#cap-img").src = src;
+    $("#cap-title").textContent = `GOES · ${GOES_VIEWS[capView.view]} · ${label}`;
+  }
+}
+async function loadGoesFrames(view) {
+  if (goesAnim.view === view && goesAnim.frames.length && Date.now() - goesAnim.loaded < 300000) return true;
+  const { frames } = await api(`/api/wx/goes/frames?view=${view}`).catch(() => ({ frames: [] }));
+  if (frames.length < 2) { toast("No animation frames yet: they build up over the next hour online", 2600); return false; }
+  Object.assign(goesAnim, { view, frames, loaded: Date.now(), i: frames.length - 1,
+    imgs: frames.map((f) => Object.assign(new Image(), { src: `/api/wx/goes/frame?view=${view}&stamp=${f.stamp}` })) });
+  return true;
 }
 async function toggleGoesAnim() {
   if (goesAnim.timer) return stopGoesAnim();
-  const view = radio.goesView, img = $(".goes-pic img"), age = $(".goes-age");
-  const { frames } = await api(`/api/wx/goes/frames?view=${view}`).catch(() => ({ frames: [] }));
-  if (frames.length < 2) return toast("No animation frames yet: they build up over the next hour online", 2600);
-  goesAnim.frames = frames;
-  goesAnim.imgs = frames.map((f) => Object.assign(new Image(), { src: `/api/wx/goes/frame?view=${view}&stamp=${f.stamp}` }));
-  goesAnim.i = 0;
-  $(".goes-play").classList.add("on");
+  const view = radio.goesView;
+  if (!(await loadGoesFrames(view))) return;
+  for (const b of $$(".goes-play, #cap-play")) b.classList.add("on");
+  $("#cap-play use").setAttribute("href", "#i-pause");
   let hold = 0;
   goesAnim.timer = setInterval(() => {
-    if (radio.goesView !== view || !img.isConnected) return stopGoesAnim();
-    if (goesAnim.i === frames.length - 1 && hold++ < 6) return;  // linger on the newest frame
+    if (radio.goesView !== view) return stopGoesAnim();
+    if (goesAnim.i === goesAnim.frames.length - 1 && hold++ < 6) return;  // linger on the newest frame
     hold = 0;
-    goesAnim.i = (goesAnim.i + 1) % frames.length;
-    img.src = goesAnim.imgs[goesAnim.i].src;
-    age.textContent = `${fmtClock(new Date(frames[goesAnim.i].t * 1000), true)} · ${goesAnim.i + 1}/${frames.length}`;
+    showGoesFrame((goesAnim.i + 1) % goesAnim.frames.length);
   }, 220);
 }
 function goesCard() {
@@ -1840,22 +1863,37 @@ function goesCard() {
   }).catch((e) => (age.textContent = String(e.message || e)));
   d.querySelector(".seg").onclick = (e) => {
     const v = e.target.closest("button")?.dataset.v;
-    if (v) { radio.goesView = v; renderRadio(); }
+    if (v) { radio.goesView = v; renderWeather(); }
   };
   return d;
 }
-function openGoes(view) {
+function openGoes(view) {  // full screen; an animation that's playing keeps playing there
   const img = $(".goes-pic img");
   if (!img?.src) return;
   $("#cap-audio").hidden = true;
-  capView = null;
+  capView = { goes: true, view };
+  $("#cap-play").hidden = false;
   $("#cap-img").hidden = false;
   $("#cap-img").src = img.src;
-  $("#cap-title").textContent = `GOES-18 · ${GOES_VIEWS[view]} · ${$(".goes-age").textContent.replace("GOES-18 · ", "")}`;
+  $("#cap-title").textContent = `GOES · ${GOES_VIEWS[view]} · ${$(".goes-age").textContent.replace("GOES-18 · ", "")}`;
   $("#cap-viewer").hidden = false;
 }
+// The Weather tab: satellite pictures (and their animations), alerts, the forecast; all kept for offline use.
+async function loadWeather(force) {
+  renderWeather();
+  if (!force && radio.weather && Date.now() - (radio.weatherAt || 0) < 300000) return;
+  radio.weather = await api("/api/weather").catch(() => radio.weather);
+  radio.weatherAt = Date.now();
+  if (currentView === "weather") renderWeather();
+}
+function renderWeather() {
+  const rows = weatherRows();
+  rows.push(head("NOAA Weather Radio", "Listen", () => { showView("radio"); radio.tab = "weather"; save("radioTab", "weather"); renderRadio(); }));
+  rows.push(note("Live broadcasts and alerts on 162.40–162.55 MHz, with the SDR."));
+  $("#wx-list").replaceChildren(...rows);
+}
 function weatherRows() {
-  const w = radio.weather, rows = [head("Satellite · NOAA GOES-18"), goesCard()];
+  const w = radio.weather, rows = [head("Satellite · NOAA GOES"), goesCard()];
   if (!w || w.error) return [note(w?.error || "Loading the forecast…")];
   rows.push(head(`Forecast · ${w.place}${w.stale ? " (offline: last update)" : ""}`));
   for (const a of w.alerts || []) {
@@ -1899,7 +1937,6 @@ $("#radio-tabs").addEventListener("click", (e) => {
   if (!tab) return;
   radio.tab = tab;
   save("radioTab", tab);
-  if (tab === "weather" && !radio.weather) api("/api/weather").then((w) => { radio.weather = w; renderRadio(); }).catch(() => {});
   renderRadio();
 });
 // "in 12 min" counts down, and a capture's progress shows up
@@ -2073,6 +2110,7 @@ function onState(s) {
 
   $("#st-gps").setAttribute("class", "st " + (p ? (p.source === "gps" && p.mode >= 3 ? "ok" : "warn") : s.gps.gpsd ? "off" : "bad"));
   $("#st-phone").setAttribute("class", "st " + (s.phone?.online ? "ok" : "off"));
+  $('.rail-btn[data-view="cameras"]').hidden = !s.phone?.online;  // its cameras come from the phone (DashLink)
   const pw = $("#st-power");
   pw.hidden = !(s.system?.undervolt_now || s.system?.undervolt_since_boot);
   pw.setAttribute("class", "st " + (s.system?.undervolt_now ? "bad" : "warn"));
@@ -2366,12 +2404,13 @@ const ACTIONS = {
   "radio-preset": togglePreset,
   "cap-next": () => showCapImage(1),
   "cap-prev": () => showCapImage(-1),
-  "cap-close": () => { $("#cap-viewer").hidden = true; $("#cap-audio").pause(); },
+  "cap-close": () => { $("#cap-viewer").hidden = true; $("#cap-audio").pause(); },  // a GOES animation keeps playing on the card
   "radio-enter": () => openSearch("", "freq"),
   "chat-type": () => openSearch("", "chat"),
   "bt-pair": btPair,
   emergency: () => showView("emergency"),
   "em-refresh": loadEmergency,
+  "wx-refresh": () => loadWeather(true),
   "bt-forget": btForget,
   "chat-mic": chatMic,
   "chat-stop": () => chatLog.busy?.abort(),
