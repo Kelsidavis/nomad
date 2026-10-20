@@ -986,6 +986,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/sim" and SIM:
                 state.set(sim=self.body_json() or None)
                 return self.send(200, {"ok": True})
+            if path == "/api/media/like":  # {id}: a mix like one track (no voice model, instant)
+                lib, want = media_library(), self.body_json().get("id")  # (the body can be read only once)
+                idx = next((i for i, t in enumerate(lib["tracks"]) if t["id"] == want), None)
+                if idx is None:
+                    return self.send(404, {"error": "no such track"})
+                return self.send(200, music.like(lib["tracks"], lib["tags"], idx))
             if path == "/api/media/vibe":  # {text}: a mix for a described vibe (the voice model picks the tags)
                 lib = media_library()
                 try:
@@ -1248,7 +1254,9 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("", "/") and not _boot_logged:  # how long after power-on the screen asked for the page
             _boot_logged.append(1)
             try:
-                print(f"screen loaded the page {float(open('/proc/uptime').read().split()[0]):.1f} s after boot", file=sys.stderr)
+                up = float(open("/proc/uptime").read().split()[0])
+                if up < 600:  # (not after a restart of just the server)
+                    print(f"screen loaded the page {up:.1f} s after boot", file=sys.stderr)
             except OSError:
                 pass
         p = (STATIC / (path.lstrip("/") or "index.html")).resolve()

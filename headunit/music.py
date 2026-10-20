@@ -87,6 +87,16 @@ def vibe(text, tracks, meta, n=60):
     return {"name": pick.get("name") or text, "tags": pick, "tracks": mix(tracks, meta, pick, n)}
 
 
+def like(tracks, meta, index, n=50):
+    """More like one track, without the voice model: its album's (or artist's) moods and styles, its artist and
+    Plex's similar artists. The track itself plays first."""
+    t = tracks[index]
+    tg = track_tags(t, meta)
+    pick = {"moods": sorted(tg["mood"])[:4], "styles": sorted(tg["style"])[:3], "artists": [t["album_artist"]], "decades": []}
+    out = [i for i in mix(tracks, meta, pick, n) if i != index]
+    return {"name": f"More like {t['title']}"[:40], "tags": pick, "tracks": [index] + out}
+
+
 def mix(tracks, meta, pick, n=60):
     """Score every track against the picked tags, then draw n from the best, at most a few per artist and each song
     once, shuffled. Too few matches: try again without the era, then with styles alone."""

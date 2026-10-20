@@ -3162,6 +3162,21 @@ setInterval(() => {
   paintTimers();
 }, 1000);
 
+// "More like this": a mix from the song playing (music.like)
+async function moreLikeThis() {
+  const t = curTrack();
+  if (!t) { toast("Nothing playing"); return null; }
+  const r = await api("/api/media/like", { json: { id: t.id } }).catch((e) => (toast(e.message), null));
+  if (!r?.tracks.length) return null;
+  media.stack = [{ type: "mix", key: `like:${t.id}`, title: r.name, tracks: r.tracks }];
+  if (currentView === "media") renderBrowser();
+  const pos = audio.currentTime;
+  playQueue(r.tracks, 0);
+  if (pos > 1) audio.addEventListener("loadedmetadata", () => { audio.currentTime = pos; }, { once: true });  // the song keeps going
+  toast(`${r.name}: ${r.tracks.length} songs`);
+  return r;
+}
+
 // ---- live state ----
 let lastState = null;
 function onState(s) {
@@ -3502,6 +3517,10 @@ async function runCommand(raw, fromModel = false) {
     say(msg);
     return msg;
   }
+  if (/^(play )?more (songs )?like (this|that)( one| song)?$|^(play )?(something|songs) like this$/.test(text)) {
+    const r = await moreLikeThis();
+    return r ? `Playing more like ${curTrack()?.title || "this"}` : "Nothing playing";
+  }
   if (/speed limit/.test(text)) {
     const r = lastState?.road, imp = settings.units === "imperial";
     const msg = !r ? "I don't know which road we're on" : !r.limit_kmh ? `No speed limit mapped for ${r.road || "this road"}`
@@ -3601,6 +3620,7 @@ const ACTIONS = {
   "np-add": () => { const t = curTrack(); if (t) openSaveSheet([media.idIndex.get(t.id)]); else toast("Nothing playing"); },
   "pl-close": () => ($("#pl-sheet").hidden = true),
   "news-refresh": () => loadNews(true),
+  "np-like": moreLikeThis,
   "timer-cancel": () => {
     const t = timers[0];
     if (t && confirm(`Cancel ${t.text ? `the reminder “${t.text}”` : "the timer"}?`)) { timers = timers.slice(1); save("timers", timers); paintTimers(); }
