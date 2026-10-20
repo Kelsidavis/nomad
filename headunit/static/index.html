@@ -351,6 +351,12 @@
         <div class="seg" data-setting="speedWarn"><button data-v="show">Show</button><button data-v="say">Show and say</button><button data-v="off">Off</button></div>
       </div>
       <div class="setting stack">
+        <div class="setting-row"><span>System<small>Version, network and health of the head unit</small></span>
+          <button class="btn" data-action="sys-test">Run check</button></div>
+        <div class="kv sys-kv" id="sys-kv"></div>
+        <div class="kv sys-kv" id="sys-test" hidden></div>
+      </div>
+      <div class="setting stack">
         <div class="setting-row"><span>Drive history<small id="drives-state">…</small></span>
           <button class="btn danger" data-action="drives-clear">Delete all</button></div>
         <div class="seg" id="drives-seg"><button data-v="on">On</button><button data-v="off">Off</button></div>

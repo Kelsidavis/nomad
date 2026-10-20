@@ -667,6 +667,10 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 .drive-row.on b, .drive-row.now b { color: #ff9100; }
 .drive-acts { display: flex; gap: 0.5rem; justify-content: flex-end; padding-top: 0.5rem; }
 
+/* settings: system */
+.sys-kv { background: var(--card-2); padding: 0.2rem 0.9rem; }
+.sys-kv .kv-row { font-size: 0.88rem; padding: 0.45rem 0; }
+
 /* video: full screen */
 #video-stage { background: #000; display: grid; place-items: center; z-index: 2100; }
 #video-stage[hidden] { display: none; }

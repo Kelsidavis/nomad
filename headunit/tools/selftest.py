@@ -16,16 +16,20 @@ HU = "http://127.0.0.1:8800"
 results = []
 
 
+JSON = "--json" in sys.argv  # one JSON list at the end instead of lines (Settings → System runs it so)
+
+
 def check(name, fn, required=True):
     t = time.time()
     try:
         detail = fn()
         ok = True
     except Exception as e:  # noqa: BLE001 - every failure is a result here
-        detail, ok = f"{type(e).__name__}: {e}", False
-    results.append((ok, required))
+        detail, ok = f"{e}" if isinstance(e, RuntimeError) else f"{type(e).__name__}: {e}", False
+    results.append((ok, required, name, str(detail)))
     mark = "ok  " if ok else ("FAIL" if required else "warn")
-    print(f"{mark} {name:22} {detail}  ({time.time() - t:.1f}s)", flush=True)
+    if not JSON:
+        print(f"{mark} {name:22} {detail}  ({time.time() - t:.1f}s)", flush=True)
 
 
 def get(path, timeout=30, base=HU):
@@ -40,7 +44,7 @@ def post(path, body, timeout=60, base=HU, raw=False):
 
 
 def services():
-    names = ["headunit", "llm", "stt", "tts", "valhalla", "gpsd"]
+    names = ["headunit", "llm", "stt", "tts", "valhalla", "gpsd", "mesh"]
     out = subprocess.run(["systemctl", "is-active", *names], capture_output=True, text=True).stdout.split()
     down = [n for n, s in zip(names, out) if s != "active"]
     if down:
@@ -169,6 +173,9 @@ if __name__ == "__main__":
     check("speech in (whisper)", stt)
     if not quick:
         check("voice model (Gemma)", llm)
-    failed = [ok for ok, req in results if not ok and req]
-    print(f"\n{'All good' if not failed else f'{len(failed)} required check(s) failed'}: {sum(ok for ok, _ in results)}/{len(results)} passed")
+    failed = [ok for ok, req, *_ in results if not ok and req]
+    if JSON:
+        print(json.dumps([{"ok": ok, "required": req, "name": n, "detail": d} for ok, req, n, d in results]))
+        sys.exit(0)
+    print(f"\n{'All good' if not failed else f'{len(failed)} required check(s) failed'}: {sum(ok for ok, *_ in results)}/{len(results)} passed")
     sys.exit(1 if failed else 0)

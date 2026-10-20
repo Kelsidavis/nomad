@@ -195,7 +195,7 @@ function showView(name) {
   if (name === "radio") loadRadio();
   if (name === "weather") loadWeather();
   if (name === "assistant") renderChat();
-  if (name === "settings") { paintBt(); paintWifi(); loadTrip(); loadDrives(); }
+  if (name === "settings") { paintBt(); paintWifi(); loadTrip(); loadDrives(); paintSystem(); }
   if (name === "emergency") loadEmergency();
   if (name === "news") loadNews();
   renderNav();
@@ -3088,6 +3088,36 @@ function checkStops(p) {
   }
 }
 
+
+// ---- Settings → System: version, network, health, and the self-test ----
+async function paintSystem() {
+  const s = await api("/api/system").catch(() => null);
+  if (!s) return;
+  const up = s.uptime_s == null ? "--" : s.uptime_s < 3600 ? `${Math.round(s.uptime_s / 60)} min` : s.uptime_s < 86400 ? `${(s.uptime_s / 3600).toFixed(1)} h` : `${(s.uptime_s / 86400).toFixed(1)} days`;
+  const t = parseInt(s.throttled || "0", 16);
+  const power = t & 1 ? ["Under-voltage now", "bad"] : t & 0x10000 ? ["Dipped since boot", "warn-t"] : ["OK", "good"];
+  const down = Object.entries(s.services || {}).filter(([, v]) => v !== "active").map(([k]) => k);
+  $("#sys-kv").innerHTML = kvRows([
+    ["NOMAD", escapeHtml(s.version)],
+    ["Network", escapeHtml([s.wifi, ...(s.ips || [])].filter(Boolean).join(" · ") || "not connected")],
+    ["Up for", up],
+    ["Free space", `${s.free_gb} GB`, s.free_gb < 5 ? "bad" : ""],
+    ["CPU", `${s.cpu_temp_c != null ? s.cpu_temp_c.toFixed(0) + " °C" : "--"} · load ${s.load != null ? s.load.toFixed(2) : "--"}`, s.cpu_temp_c > 75 ? "bad" : ""],
+    ["Power", power[0], power[1]],
+    ["Services", down.length ? `not running: ${down.join(", ")}` : "all running", down.length ? "warn-t" : "good"],
+  ]);
+}
+async function runSelftest() {
+  const box = $("#sys-test");
+  box.hidden = false;
+  box.innerHTML = `<div class="empty">Checking maps, routing, search, voice, GPS, weather… (about 20 seconds)</div>`;
+  const r = await api("/api/selftest", { json: {} }).catch((e) => ({ error: e.message }));
+  if (r.error) return (box.innerHTML = `<div class="empty">${escapeHtml(r.error)}</div>`);
+  const bad = r.results.filter((x) => !x.ok && x.required).length;
+  box.innerHTML = `<div class="kv-head">${bad ? `${bad} problem${bad === 1 ? "" : "s"}` : "All good"} · ${r.results.filter((x) => x.ok).length}/${r.results.length} passed</div>` +
+    kvRows(r.results.map((x) => [escapeHtml(x.name), escapeHtml(x.detail), x.ok ? "good" : x.required ? "bad" : "warn-t"]));
+}
+
 // ---- live state ----
 let lastState = null;
 function onState(s) {
@@ -3504,6 +3534,7 @@ const ACTIONS = {
   "np-add": () => { const t = curTrack(); if (t) openSaveSheet([media.idIndex.get(t.id)]); else toast("Nothing playing"); },
   "pl-close": () => ($("#pl-sheet").hidden = true),
   "news-refresh": () => loadNews(true),
+  "sys-test": runSelftest,
   "drive-show": (btn) => showDrive(btn.dataset.id),
   "drive-hide": hideDrive,
   "drive-del": async () => { if (!confirm("Delete this drive?")) return; driveInfo = await api("/api/drives/delete", { json: { id: shownDrive } }); hideDrive(); },

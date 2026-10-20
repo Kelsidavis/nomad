@@ -228,6 +228,31 @@ def mesh_loop():
         time.sleep(4)
 
 
+def system_info():
+    """Settings → System: version, addresses, uptime, disk, temperatures, power and the services."""
+    def run(*cmd):
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True, timeout=5).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return ""
+    try:
+        version = (pathlib.Path(__file__).resolve().parent / "VERSION").read_text().strip()
+    except OSError:
+        version = "dev"
+    try:
+        uptime = float(open("/proc/uptime").read().split()[0])
+    except OSError:
+        uptime = None
+    du = os.statvfs(str(HOME_FILE.parent if HOME_FILE.parent.exists() else pathlib.Path.home()))
+    names = ["headunit", "llm", "stt", "tts", "valhalla", "gpsd", "mesh"]
+    states = run("systemctl", "is-active", *names).split()
+    return {"version": version, "uptime_s": uptime, "host": socket.gethostname(),
+            "ips": [a for a in run("hostname", "-I").split() if ":" not in a and not a.startswith("172.17.")][:3],
+            "wifi": run("iwgetid", "-r") or None, "free_gb": round(du.f_bavail * du.f_frsize / 1e9, 1),
+            "throttled": run("vcgencmd", "get_throttled").partition("=")[2] or None, "services": dict(zip(names, states)),
+            **{k: state.system.get(k) for k in ("cpu_temp_c", "load", "mem_available_mb") if isinstance(state.system, dict)}}
+
+
 def _state_code():
     """The state the forecast is for ("Longview, WA" -> "WA"), for the regional fuel prices."""
     try:
@@ -879,6 +904,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/adsb":  # aircraft heard on 1090 MHz; asking keeps the receiver on for a while
                 adsb.want()
                 return self.send(200, adsb.status())
+            if path == "/api/system":  # Settings → System
+                return self.send(200, system_info())
             if path == "/api/drives":  # the drive history (newest first) and the drive going on now
                 return self.send(200, drives.history())
             if path.startswith("/api/drives/"):  # /api/drives/<id>[?gpx=1]: one drive's track
@@ -990,6 +1017,13 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/adsb":  # {always}: keep receiving with the screen elsewhere
                 adsb.set_always(self.body_json().get("always"))
                 return self.send(200, adsb.status())
+            if path == "/api/selftest":  # run tools/selftest.py (quick) and return its results
+                try:
+                    out = subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve().parent / "tools/selftest.py"), "--quick", "--json"],
+                                         capture_output=True, text=True, timeout=120).stdout
+                    return self.send(200, {"results": json.loads(out.strip().splitlines()[-1])})
+                except (OSError, subprocess.SubprocessError, ValueError, IndexError) as e:
+                    return self.send(500, {"error": f"self-test failed to run: {e}"})
             if path == "/api/drives/delete":  # {id} or {all: true}
                 body = self.body_json()
                 return self.send(200, drives.delete(None if body.get("all") else body["id"]))
