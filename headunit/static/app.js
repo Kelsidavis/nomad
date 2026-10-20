@@ -1716,6 +1716,13 @@ function renderEmergency() {
   banner.className = "em-banner " + (e.zone ? "danger" : "ok");
   banner.textContent = e.zone ? e.zone.advice : e.have_tsunami_data ? "Not in a tsunami evacuation zone." : "No tsunami zone data installed (tools/fetch_emergency.py).";
   rows.push(banner);
+  if (lastState?.mesh?.status === "connected") {  // off-grid: tell the LoRa mesh where the truck is
+    const b = document.createElement("button");
+    b.className = "btn danger em-mesh";
+    b.textContent = "Send my location on the mesh";
+    b.onclick = () => { if (confirm("Send your location to everyone on the mesh?")) meshSendLocation("SOS: need help at"); };
+    rows.push(b);
+  }
   for (const a of radio.weather?.alerts || []) rows.push(Object.assign(document.createElement("div"), { className: "wx-alert", textContent: `⚠ ${a.event}: ${a.headline || ""}` }));
   for (const q of lastState?.quake_alerts || []) rows.push(Object.assign(document.createElement("div"), { className: "wx-alert", textContent: `⚠ Earthquake M${q.mag.toFixed(1)}, ${q.place}${q.tsunami ? " (tsunami possible)" : ""}` }));
   if (e.assembly.length) {
@@ -2624,10 +2631,10 @@ async function meshSend(text) {
   } catch (e) { toast(`Not sent: ${e.message}`, 5000); }
   loadMesh();
 }
-function meshSendLocation() {
+function meshSendLocation(prefix = "📍") {
   if (!lastState?.position) return toast("No GPS fix to send");
   const p = lastState.position;
-  meshSend(`📍 ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}${whereNow ? ` (${whereText()})` : ""}`);
+  meshSend(`${prefix} ${p.lat.toFixed(5)}, ${p.lon.toFixed(5)}${whereNow ? ` (${whereText()})` : ""}`);
 }
 function meshGeojson() {
   return { type: "FeatureCollection", features: (lastState?.mesh?.nodes || []).map(([short, lat, lon, heard, name]) => ({
@@ -3525,6 +3532,12 @@ async function runCommand(raw, fromModel = false) {
     const which = /trip b$/.test(text) ? "b" : "a";
     tripInfo = await api("/api/trip/reset", { json: { which } });
     return `Trip ${which.toUpperCase()} reset`;
+  }
+  if (/(send|share|tell) (my |our )?(eta|arrival)( time)? (to|on|with) the mesh|tell the mesh (my|our) eta/.test(text)) {
+    if (!nav.active || !nav.dest) return "No route: there's no arrival time to send";
+    const msg = `ETA ${$("#nav-eta").textContent} at ${nav.dest.name} (${$("#nav-left-time").textContent} out${whereNow ? `, now ${whereText()}` : ""})`;
+    await meshSend(msg);
+    return `Sent to the mesh: ${msg}`;
   }
   if ((m = text.match(/^(?:send (?:a )?(?:mesh|lora) (?:message )?|tell the mesh |mesh message )(.+)$/))) { await meshSend(m[1]); return `Sent to the mesh: ${m[1]}`; }
   if (/^(read|any|check)( the| my)? (mesh|lora) (messages?)?/.test(text)) {

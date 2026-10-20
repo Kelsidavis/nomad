@@ -44,7 +44,7 @@ def post(path, body, timeout=60, base=HU, raw=False):
 
 
 def services():
-    names = ["headunit", "llm", "stt", "tts", "valhalla", "gpsd", "mesh"]
+    names = ["headunit", "llm", "stt", "tts", "valhalla", "gpsd", "mesh", "netwatch"]
     out = subprocess.run(["systemctl", "is-active", *names], capture_output=True, text=True).stdout.split()
     down = [n for n, s in zip(names, out) if s != "active"]
     if down:

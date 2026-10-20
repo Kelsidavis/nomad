@@ -244,7 +244,7 @@ def system_info():
     except OSError:
         uptime = None
     du = os.statvfs(str(HOME_FILE.parent if HOME_FILE.parent.exists() else pathlib.Path.home()))
-    names = ["headunit", "llm", "stt", "tts", "valhalla", "gpsd", "mesh"]
+    names = ["headunit", "llm", "stt", "tts", "valhalla", "gpsd", "mesh", "netwatch"]
     states = run("systemctl", "is-active", *names).split()
     return {"version": version, "uptime_s": uptime, "host": socket.gethostname(),
             "ips": [a for a in run("hostname", "-I").split() if ":" not in a and not a.startswith("172.17.")][:3],
