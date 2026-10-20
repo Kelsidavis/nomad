@@ -333,12 +333,18 @@ def forecast(lat, lon, max_age_s=1800):
         point = _nws(f"https://api.weather.gov/points/{lat:.4f},{lon:.4f}")["properties"]
         periods = _nws(point["forecast"])["properties"]["periods"]
         alerts = _nws(f"https://api.weather.gov/alerts/active?point={lat:.4f},{lon:.4f}")["features"]
+        try:  # the next 24 hours, for the Weather screen's chart
+            hourly = [{"t": h["startTime"], "temp": h.get("temperature"), "rain": (h.get("probabilityOfPrecipitation") or {}).get("value"),
+                       "sky": h.get("shortForecast")} for h in _nws(point["forecastHourly"], timeout=10)["properties"]["periods"][:24]]
+        except (OSError, KeyError, ValueError):
+            hourly = []
         loc = point.get("relativeLocation", {}).get("properties", {})
         out = {"t": time.time(), "lat": lat, "lon": lon, "place": f"{loc.get('city', '')}, {loc.get('state', '')}".strip(", "),
                "periods": [{k: p.get(k) for k in ("name", "temperature", "temperatureUnit", "windSpeed", "windDirection",
                                                     "shortForecast", "isDaytime")} |
                            {"rain": (p.get("probabilityOfPrecipitation") or {}).get("value")} for p in periods[:8]],
-               "alerts": [{k: a["properties"].get(k) for k in ("event", "headline", "severity", "ends")} for a in alerts[:5]]}
+               "alerts": [{k: a["properties"].get(k) for k in ("event", "headline", "severity", "ends")} for a in alerts[:5]],
+               "hourly": hourly}
         DATA.mkdir(parents=True, exist_ok=True)
         FORECAST.write_text(json.dumps(out))
         return out

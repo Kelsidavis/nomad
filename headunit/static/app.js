@@ -2163,10 +2163,54 @@ function renderWeather() {
   rows.push(note("Live broadcasts and alerts on 162.40–162.55 MHz, with the SDR."));
   $("#wx-list").replaceChildren(...rows);
 }
+
+// The next 24 hours: temperature as a line, chance of rain as bars (radio.forecast "hourly")
+function hourlyChart(hours) {
+  const wrap = document.createElement("div");
+  wrap.className = "card wx-hourly";
+  const c = document.createElement("canvas");
+  wrap.append(c);
+  requestAnimationFrame(() => {
+    const W = wrap.clientWidth - 24, H = 150, dpr = window.devicePixelRatio || 1;
+    c.width = W * dpr; c.height = H * dpr; c.style.width = `${W}px`; c.style.height = `${H}px`;
+    const g = c.getContext("2d");
+    g.scale(dpr, dpr);
+    const css = getComputedStyle(document.documentElement);
+    const text = css.getPropertyValue("--text-2").trim() || "#999", accent = css.getPropertyValue("--accent").trim() || "#4c8dff";
+    const temps = hours.map((h) => h.temp), lo = Math.min(...temps) - 2, hi = Math.max(...temps) + 2;
+    const left = 6, right = W - 6, top = 22, bottom = H - 22, step = (right - left) / hours.length;
+    const y = (t) => bottom - ((t - lo) / (hi - lo || 1)) * (bottom - top);
+    g.font = "11px Nunito Sans, sans-serif";
+    hours.forEach((h, i) => {  // rain bars
+      if (h.rain) {
+        g.fillStyle = "rgba(76,141,255,0.28)";
+        const bh = (h.rain / 100) * (bottom - top);
+        g.fillRect(left + i * step + 1, bottom - bh, step - 2, bh);
+      }
+    });
+    g.strokeStyle = accent;
+    g.lineWidth = 2.5;
+    g.beginPath();
+    hours.forEach((h, i) => { const x = left + (i + 0.5) * step; i ? g.lineTo(x, y(h.temp)) : g.moveTo(x, y(h.temp)); });
+    g.stroke();
+    g.fillStyle = text;
+    g.textAlign = "center";
+    hours.forEach((h, i) => {
+      const x = left + (i + 0.5) * step, d = new Date(h.t);
+      if (i % 3 === 0) {
+        g.fillText(`${h.temp}°`, x, y(h.temp) - 7);
+        g.fillText(settings.clock === "24" ? `${d.getHours()}:00` : d.toLocaleTimeString([], { hour: "numeric" }).replace(" ", "").toLowerCase(), x, H - 6);
+      }
+      if (h.rain >= 30 && i % 3 === 0) g.fillText(`${h.rain}%`, x, bottom - 4);
+    });
+  });
+  return wrap;
+}
 function weatherRows() {
   const w = radio.weather, rows = [head("Satellite · NOAA GOES"), goesCard()];
   if (!w || w.error) return [note(w?.error || "Loading the forecast…")];
   rows.push(head(`Forecast · ${w.place}${w.stale ? " (offline: last update)" : ""}`));
+  if (w.hourly?.length > 6) rows.push(hourlyChart(w.hourly));
   for (const a of w.alerts || []) {
     const d = document.createElement("div");
     d.className = "wx-alert";
@@ -3587,6 +3631,15 @@ async function runCommand(raw, fromModel = false) {
   if (/^(help|commands|what can (you do|i say)|what do you (do|know)|voice commands)$/.test(text)) {
     showView("help");
     const msg = "Here's what I can do. Say my name first, then the command.";
+    say(msg);
+    return msg;
+  }
+  if (/(will|is) it (going to )?(rain|snow)|(rain|snow) (today|tonight|later)|do i need an umbrella/.test(text)) {
+    const hours = radio.weather?.hourly || [];
+    const wet = hours.find((h) => h.rain >= 40);
+    const msg = !hours.length ? "I don't have the hourly forecast yet"
+      : wet ? `${wet.rain}% chance around ${fmtClock(new Date(wet.t), true)}: ${wet.sky.toLowerCase()}`
+      : `No rain expected in the next ${hours.length} hours`;
     say(msg);
     return msg;
   }
