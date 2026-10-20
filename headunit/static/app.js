@@ -2904,6 +2904,17 @@ async function runCommand(raw, fromModel = false) {
     if (nav.route) startNav();
     return `Navigating to ${results[0].name}`;
   }
+  if (/^(?:find (?:me )?(?:some )?|(?:the )?nearest |closest |i need |we need |low on )(gas|fuel|a gas station|gas station)/.test(text)) {
+    query = "gas";
+    const results = await runSearch();
+    closeSearch();
+    if (!results?.length) return "No gas stations found nearby";
+    await previewRoute(results[0]);
+    if (nav.route) startNav();
+    const msg = `Navigating to ${results[0].name}`;
+    say(msg);
+    return msg;
+  }
   if (/^(?:find|search(?: for)?|where is) (.+)$/.test(text)) {
     openSearch(text.replace(/^(?:find|search(?: for)?|where is) /, ""));
     return "Searching";
