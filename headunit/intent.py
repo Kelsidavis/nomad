@@ -21,7 +21,9 @@ MEMORY_TURNS = 6
 
 ACTIONS = ["navigate", "cancel_navigation", "play_music", "pause", "next_track", "previous_track",
            "volume_up", "volume_down", "zoom_in", "zoom_out", "show_screen", "save_clip",
-           "ask_speed", "ask_time", "ask_eta", "unknown"]
+           "ask_speed", "ask_time", "ask_eta", "find_along_route", "set_timer", "remind", "engine_codes",
+           "ask_fuel_economy", "ask_gas_price", "ask_speed_limit", "ask_location", "more_like_this", "read_news",
+           "ask_aircraft", "mesh_send", "ask_oil_change", "help", "unknown"]
 
 SYSTEM = """You turn a driver's spoken request into one command for a car head unit.
 Actions:
@@ -31,15 +33,29 @@ Actions:
 - pause, next_track, previous_track: control the music.
 - volume_up, volume_down: louder or quieter.
 - zoom_in, zoom_out: the map.
-- show_screen: query = one of map, media, cameras, vehicle, settings.
+- show_screen: only to open a screen; query = one of map, media, cameras, vehicle, settings.
 - save_clip: keep the current dashcam recording.
 - ask_speed, ask_time, ask_eta: the driver asks for speed, the time, or when they will arrive.
+- find_along_route: something on the way, ahead on the route. query = gas, food, coffee, rest area or hotel.
+- set_timer: a countdown. when = how long ("10 minutes").
+- remind: remind the driver of something later. query = what, in their words ("call mom"); when = how long from now.
+- engine_codes: check-engine light, engine trouble codes, is something wrong with the truck.
+- ask_fuel_economy: gas mileage, mpg. ask_gas_price: what gas or diesel costs. ask_oil_change: when the oil is due.
+- ask_speed_limit: the speed limit here. ask_location: where we are, what town this is.
+- more_like_this: more music like what's playing. read_news: the news or headlines.
+- ask_aircraft: a plane overhead. mesh_send: send a text over the LoRa mesh; query = the message.
+- help: what the driver can say.
 - unknown: anything else, or nothing actionable.
+Fill query and when with "" when they don't apply.
+Examples: "anywhere to eat coming up" is find_along_route food. "what town is this" is ask_location.
+"what plane is that up there" is ask_aircraft. "put on something similar" is more_like_this.
+"wake me in ten minutes" is set_timer with when "10 minutes".
 Reply with JSON only."""
 
 SCHEMA = {"type": "object", "properties": {"action": {"type": "string", "enum": ACTIONS},
-                                           "query": {"type": "string"}},
-          "required": ["action", "query"], "additionalProperties": False}
+                                           "query": {"type": "string", "maxLength": 120},
+                                           "when": {"type": "string", "maxLength": 40}},
+          "required": ["action", "query", "when"], "additionalProperties": False}
 
 CHAT_SYSTEM = f"""You are the voice of a car's head unit, talking with the driver while they drive.
 Answer the way a friendly passenger would: natural, warm, and brief. At most two short sentences, because it is
@@ -65,14 +81,15 @@ def _complete(messages, max_tokens, timeout, llm, **extra):
 def command(text, timeout=20, llm=LLM):
     """{"action", "query", "llm_s"} for one command. Raises OSError when llama-server isn't running."""
     t = time.time()
-    raw = _complete([{"role": "system", "content": SYSTEM}, {"role": "user", "content": text}], 60, timeout, llm,
+    raw = _complete([{"role": "system", "content": SYSTEM}, {"role": "user", "content": text}], 90, timeout, llm,
                     response_format={"type": "json_schema", "json_schema": {"name": "command", "schema": SCHEMA}})
     try:
         got = json.loads(raw)
     except ValueError:
         got = {}
     action = got.get("action") if got.get("action") in ACTIONS else "unknown"
-    return {"action": action, "query": str(got.get("query", "")).strip(), "llm_s": round(time.time() - t, 2)}
+    return {"action": action, "query": str(got.get("query", "")).strip(), "when": str(got.get("when", "")).strip(),
+            "llm_s": round(time.time() - t, 2)}
 
 
 def chat(text, context="", timeout=30, llm=LLM):

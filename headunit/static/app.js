@@ -3615,6 +3615,11 @@ const MODEL_PHRASES = {
   previous_track: () => "previous", volume_up: () => "volume up", volume_down: () => "volume down",
   zoom_in: () => "zoom in", zoom_out: () => "zoom out", show_screen: (q) => q && `show ${q}`,
   save_clip: () => "save clip", ask_speed: () => "how fast", ask_time: () => "what time", ask_eta: () => "eta",
+  find_along_route: (q) => `${q || "gas"} on the way`, set_timer: (q, w) => (w || q) && `set a timer for ${w || q}`,
+  remind: (q, w) => q && w && `remind me to ${q} in ${w}`, engine_codes: () => "any engine codes",
+  ask_fuel_economy: () => "what's my gas mileage", ask_gas_price: () => "how much is gas", ask_oil_change: () => "when's my oil change",
+  ask_speed_limit: () => "what's the speed limit", ask_location: () => "where are we", more_like_this: () => "more like this",
+  read_news: () => "read the news", ask_aircraft: () => "what plane is that", mesh_send: (q) => q && `tell the mesh ${q}`, help: () => "help",
 };
 async function askModel(raw) {
   let r;
@@ -3623,7 +3628,8 @@ async function askModel(raw) {
   } catch {
     return `Didn't understand “${raw.trim()}”`;
   }
-  const phrase = MODEL_PHRASES[r.action]?.(r.query.toLowerCase().replace(/[.,!?]/g, "").trim());
+  const clean = (x) => (x || "").toLowerCase().replace(/[.,!?]/g, "").trim();
+  const phrase = MODEL_PHRASES[r.action]?.(clean(r.query), clean(r.when));
   return phrase ? runCommand(phrase, true) : `Didn't understand “${raw.trim()}”`;
 }
 
