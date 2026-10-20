@@ -46,6 +46,7 @@ import emergency  # noqa: E402
 import network  # noqa: E402
 import music  # noqa: E402
 import news  # noqa: E402
+import obd  # noqa: E402
 
 PORT = int(os.environ.get("HEADUNIT_PORT", 8800))
 BIND = os.environ.get("HEADUNIT_BIND", "127.0.0.1")
@@ -161,7 +162,22 @@ class State:
                           "location": (self.phone_all or {}).get("location")},
                 "dashcam": self.dashcam,
                 "system": self.system,
+                "obd": _obd_brief(),
             }
+
+
+def _obd_brief():
+    """The engine values for the live state (the full picture, with codes, is /api/obd)."""
+    s = obd.status()
+    return {"status": s["status"], "mil": s["mil"], "codes": len(s["dtcs"] or []), "mpg": s["mpg"], "gph": s["gph"],
+            "trip_mpg": round(s["trip"]["km"] * 0.621371 / s["trip"]["gal"], 1) if s["trip"]["gal"] > 0.02 else None,
+            "v": {k: v["v"] for k, v in s["values"].items() if time.time() - v["t"] < 15}}
+
+
+def _with_engine(context):
+    """The page's context line plus what the engine says, for the voice model."""
+    e = obd.summary()
+    return f"{context}; {e}" if e and context else e or context
 
 
 state = State()
@@ -790,6 +806,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {"tracks": music.tag_tracks(lib["tracks"], lib["tags"], q["kind"], q["tag"])})
             if path == "/api/playlists":
                 return self.send(200, {"playlists": music.playlists()})
+            if path == "/api/obd":  # everything from the OBD adapter, codes included
+                return self.send(200, obd.status())
             if path == "/api/news":  # ?feed=<url>: the cached headlines, newest first
                 return self.send(200, news.headlines(q.get("feed")))
             if path == "/api/media/file":
@@ -841,7 +859,7 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     if path == "/api/intent":
                         return self.send(200, intent.command(body["text"]))
-                    return self.send(200, intent.chat(body["text"], str(body.get("context", ""))[:400]))
+                    return self.send(200, intent.chat(body["text"], _with_engine(str(body.get("context", ""))[:400])))
                 except (OSError, urllib.error.URLError) as e:
                     return self.send(503, {"error": f"voice model not running: {e}"})
             if path == "/api/volume":
@@ -872,6 +890,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, network.connect(body["ssid"], body.get("password") or None))
             if path == "/api/wifi/forget":  # {ssid}
                 return self.send(200, network.forget(self.body_json()["ssid"]))
+            if path == "/api/obd/codes":  # read the check-engine codes now
+                return self.send(200, obd.read_codes())
+            if path == "/api/obd/clear":  # clear them (and the readiness monitors)
+                return self.send(200, obd.clear_codes())
+            if path == "/api/obd/scan":  # nearby Bluetooth OBD adapters
+                return self.send(200, {"devices": obd.scan_bluetooth()})
+            if path == "/api/obd/pair":  # {mac}
+                ok = obd.pair_bluetooth(self.body_json()["mac"])
+                return self.send(200 if ok else 400, {"ok": ok} if ok else {"error": "Pairing failed: is the adapter plugged in, and the ignition on?"})
             if path == "/api/news/refresh":
                 if not network.allowed("ask"):
                     return self.send(200, {**news.headlines(), "note": "Offline (Settings → Data use): the last headlines"})
@@ -959,7 +986,7 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
         t, n = time.time(), 0
         try:
-            for kind, text in intent.assistant_stream(body.get("messages") or [], str(body.get("context", ""))[:400],
+            for kind, text in intent.assistant_stream(body.get("messages") or [], _with_engine(str(body.get("context", ""))[:400]),
                                                       body.get("think", True)):
                 n += 1
                 self.wfile.write(json.dumps({"t": kind, "d": text}).encode() + b"\n")
@@ -1060,7 +1087,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
                  lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here),
-                 lambda: radio.weather_loop(here), net_loop, news.news_loop):
+                 lambda: radio.weather_loop(here), net_loop, news.news_loop, obd.obd_loop):
         threading.Thread(target=loop, daemon=True).start()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True

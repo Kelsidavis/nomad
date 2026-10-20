@@ -2360,6 +2360,7 @@ function kvRows(rows) {
 }
 function renderVehicle(s) {
   const p = s.position, sys = s.system || {}, ph = s.phone || {}, batt = ph.status?.battery;
+  renderObd(s.obd);
   drawCompass(p ? heading : null);
   const acc = ph.linear_accel;  // the phone's accelerometer, when one is connected
   drawG(s.gps.g || (acc ? [acc[0] / 9.81, acc[1] / 9.81] : null));
@@ -2386,6 +2387,104 @@ function renderVehicle(s) {
     ["Battery temperature", batt ? `${batt.temp_c.toFixed(0)} °C` : "--", batt?.temp_c > 45 ? "bad" : ""],
     ["Hottest sensor", ph.status?.max_thermal_c != null ? `${ph.status.max_thermal_c.toFixed(0)} °C` : "--"],
   ]);
+}
+
+
+// ---- OBD-II (obd.py): engine gauges, check-engine codes, fuel economy ----
+const OBD_TILES = [
+  ["rpm", "rpm", (v) => Math.round(v)],
+  ["coolant", "coolant", (v) => tempText(v)],
+  ["voltage", "volts", (v) => v.toFixed(1)],
+  ["fuel", "fuel", (v) => `${Math.round(v)}%`],
+  ["load", "load", (v) => `${Math.round(v)}%`],
+  ["throttle", "throttle", (v) => `${Math.round(v)}%`],
+  ["intake", "intake air", (v) => tempText(v)],
+  ["oil", "oil", (v) => tempText(v)],
+];
+const tempText = (c) => settings.units === "imperial" ? `${Math.round(c * 9 / 5 + 32)}°F` : `${Math.round(c)}°C`;
+let obdFull = null;
+function renderObd(o) {
+  const card = $("#obd-card");
+  if (!o || o.status === "off") return (card.hidden = true);
+  card.hidden = false;
+  const live = o.status === "connected";
+  $("#obd-state").textContent = { connected: "Connected", searching: "Looking for an adapter…", connecting: "Connecting…",
+    "no adapter": "No adapter found", "no ecu": "Adapter found; the truck isn't answering (ignition on?)", starting: "Starting…" }[o.status] || o.status;
+  $("#obd-state").className = live ? "good" : "";
+  const tiles = $("#obd-tiles");
+  tiles.hidden = !live;
+  const v = o.v || {};
+  const econ = o.mpg != null ? [`${settings.units === "imperial" ? o.mpg : (235.21 / o.mpg).toFixed(1)}`, settings.units === "imperial" ? "mpg now" : "L/100 km now"]
+    : o.gph != null ? [settings.units === "imperial" ? o.gph.toFixed(2) : (o.gph * 3.785).toFixed(1), settings.units === "imperial" ? "gal/h idle" : "L/h idle"] : null;
+  const trip = o.trip_mpg != null ? [settings.units === "imperial" ? o.trip_mpg : (235.21 / o.trip_mpg).toFixed(1), settings.units === "imperial" ? "mpg trip" : "L/100 km trip"] : null;
+  const items = [...(econ ? [econ] : []), ...(trip ? [trip] : []),
+    ...OBD_TILES.filter(([k]) => v[k] != null).map(([k, label, f]) => [f(v[k]), label, k])];
+  tiles.innerHTML = items.slice(0, 8).map(([val, label, k]) => {
+    const warn = (k === "coolant" && v.coolant > 110) || (k === "voltage" && (v.voltage < 12.2 || v.voltage > 15)) ? " warn" : "";
+    return `<div class="obd-tile${warn}"><b>${escapeHtml(String(val))}</b><span>${escapeHtml(label)}</span></div>`;
+  }).join("");
+  const cel = $("#obd-cel");
+  cel.hidden = !live;
+  cel.className = "btn obd-cel " + (o.codes ? "bad" : o.mil === false ? "good" : "");
+  cel.querySelector("span").textContent = o.codes ? `Check engine: ${o.codes} code${o.codes === 1 ? "" : "s"}` : o.mil === false ? "No engine codes" : "Engine codes: tap to read";
+  $("#obd-find").hidden = live;
+}
+async function showObdCodes(refresh) {
+  $("#obd-codes").hidden = false;
+  $("#obd-codes").innerHTML = `<div class="empty">Reading codes…</div>`;
+  obdFull = await (refresh ? api("/api/obd/codes", { json: {} }) : api("/api/obd")).catch((e) => ({ error: e.message }));
+  paintObdCodes();
+}
+function paintObdCodes() {
+  const o = obdFull, box = $("#obd-codes");
+  if (o.error && !o.dtcs) return (box.innerHTML = `<div class="empty">${escapeHtml(o.error)}</div>`);
+  const row = (d, pending) => `<div class="kv-row"><span><b>${d.code}</b>${pending ? " · pending" : ""}</span><span>${escapeHtml(d.text)}</span></div>`;
+  box.innerHTML = [
+    ...(o.dtcs || []).map((d) => row(d, false)),
+    ...(o.pending || []).map((d) => row(d, true)),
+    ...(!(o.dtcs || []).length && !(o.pending || []).length ? [`<div class="empty">No stored or pending codes.</div>`] : []),
+    `<div class="obd-acts">${o.vin ? `<small>VIN ${o.vin} · ${escapeHtml(o.protocol || "")}</small>` : ""}
+      <button class="btn" data-action="obd-reread">Read again</button>
+      ${(o.dtcs || []).length ? `<button class="btn danger" data-action="obd-clear">Clear codes</button>` : ""}</div>`,
+  ].join("");
+}
+async function obdClear() {
+  if (!confirm("Clear the check-engine codes and turn the light off? Fix the cause first, or they'll come back. This also resets the emissions readiness monitors (an inspection needs a few days of driving after).")) return;
+  obdFull = await api("/api/obd/clear", { json: {} }).catch((e) => ({ ...obdFull, error: e.message }));
+  paintObdCodes();
+  toast(obdFull.dtcs?.length ? "Some codes are still there" : "Codes cleared");
+}
+async function obdFind() {
+  const box = $("#obd-codes");
+  box.hidden = false;
+  box.innerHTML = `<div class="empty">Looking for Bluetooth OBD adapters for 12 seconds… (plug it in with the ignition on)</div>`;
+  const { devices = [] } = await api("/api/obd/scan", { json: {} }).catch(() => ({}));
+  if (!devices.length) {
+    box.innerHTML = `<div class="empty">None found. A USB adapter is found by itself; a Wi-Fi one needs OBD_DEVICE=tcp:192.168.0.10:35000 in nomad.conf.</div>`;
+    return;
+  }
+  box.replaceChildren(...devices.map((d) => {
+    const b = document.createElement("button");
+    b.className = "list-item media-row";
+    b.innerHTML = `<span class="thumb"><svg><use href="#i-car"/></svg></span><span class="txt"><span class="t"></span><span class="s"></span></span>`;
+    b.querySelector(".t").textContent = d.name;
+    b.querySelector(".s").textContent = d.paired ? "Paired: connecting" : "Tap to pair (PIN 1234 or 0000, tried for you)";
+    b.onclick = async () => {
+      toast(`Pairing ${d.name}…`, 30000);
+      try { await api("/api/obd/pair", { json: { mac: d.mac } }); toast(`Paired ${d.name}`); box.hidden = true; } catch (e) { toast(e.message, 5000); }
+    };
+    return b;
+  }));
+}
+// "truck, any engine codes?" / "check engine light"
+async function obdSay() {
+  const o = await api("/api/obd/codes", { json: {} }).catch(() => null);
+  let msg;
+  if (!o || o.status !== "connected") msg = "The OBD adapter isn't connected";
+  else if (o.dtcs?.length) msg = `${o.dtcs.length} code${o.dtcs.length === 1 ? "" : "s"}: ${o.dtcs.map((d) => `${d.code.split("").join(" ")}, ${d.text}`).join(". ")}`;
+  else msg = o.pending?.length ? `No stored codes, but ${o.pending.length} pending: ${o.pending.map((d) => d.text).join(", ")}` : "No engine codes";
+  say(msg);
+  return msg;
 }
 
 // ---- live state ----
@@ -2643,6 +2742,7 @@ async function runCommand(raw, fromModel = false) {
     return msg;
   }
   if (/^(read|tell me|what'?s|give me)( me)? (the )?(news|headlines)|^(news|headlines)$/.test(text)) return readHeadlines();
+  if (/engine (code|light|trouble)|check engine|trouble code|diagnos/.test(text)) return obdSay();
   if (/what time/.test(text)) { const msg = `It's ${fmtClock(new Date(), true)}`; say(msg); return msg; }
   if (/where (are|am) (we|i)|what town|where is this/.test(text)) {
     const msg = whereNow ? `We're ${whereText()}` : lastPos ? "Somewhere without a town nearby" : "No GPS fix yet";
@@ -2735,6 +2835,10 @@ const ACTIONS = {
   "np-add": () => { const t = curTrack(); if (t) openSaveSheet([media.idIndex.get(t.id)]); else toast("Nothing playing"); },
   "pl-close": () => ($("#pl-sheet").hidden = true),
   "news-refresh": () => loadNews(true),
+  "obd-cel": () => ($("#obd-codes").hidden ? showObdCodes(false) : ($("#obd-codes").hidden = true)),
+  "obd-reread": () => showObdCodes(true),
+  "obd-clear": obdClear,
+  "obd-find": obdFind,
   "news-manage": () => { news.manage = !news.manage; $("#news-manage").textContent = news.manage ? "Done" : "Feeds"; renderNews(); },
   "player-toggle": togglePlayer,
   "radio-up": () => radioNudge(1),

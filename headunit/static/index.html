@@ -276,6 +276,13 @@
     <!-- Vehicle and system -->
     <div class="view" id="view-vehicle">
       <div class="view-head"><h2>Vehicle</h2></div>
+      <div class="card obd-card" id="obd-card" hidden>
+        <div class="obd-top"><div><div class="eyebrow">Engine · OBD-II</div><div id="obd-state">…</div></div>
+          <button class="btn" id="obd-cel" data-action="obd-cel"><span></span></button>
+          <button class="btn" id="obd-find" data-action="obd-find">Find Bluetooth adapter</button></div>
+        <div class="obd-tiles" id="obd-tiles" hidden></div>
+        <div class="kv obd-codes" id="obd-codes" hidden></div>
+      </div>
       <div class="gauges">
         <div class="gauge">
           <canvas id="compass" width="240" height="240"></canvas>

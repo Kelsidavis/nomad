@@ -583,6 +583,25 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 .news-body p { margin: 0 0 0.6rem; color: var(--text-2); line-height: 1.4; }
 .news-acts .btn svg { width: 1.1rem; height: 1.1rem; fill: currentColor; margin-right: 0.35rem; vertical-align: -0.2rem; }
 
+/* vehicle: OBD-II */
+.obd-card { display: flex; flex-direction: column; gap: 0.7rem; padding: 0.9rem 1.1rem; }
+.obd-top { display: flex; align-items: center; gap: 0.8rem; }
+.obd-top > div { flex: 1; }
+#obd-state.good { color: var(--good, #3ecf8e); }
+.obd-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
+.obd-tile { display: flex; flex-direction: column; align-items: center; padding: 0.5rem 0.2rem; border-radius: 0.8rem; background: var(--card-2); }
+.obd-tile b { font-size: 1.45rem; font-variant-numeric: tabular-nums; }
+.obd-tile span { font-size: 0.78rem; color: var(--text-2); }
+.obd-tile.warn b { color: #ff6b5e; }
+.obd-cel.bad { background: #c0392b; color: #fff; }
+.obd-cel.good { color: var(--good, #3ecf8e); }
+.obd-codes { background: var(--card-2); }
+.obd-codes .kv-row span:first-child { color: var(--text); white-space: nowrap; }
+.obd-acts { display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem; padding: 0.6rem 0; }
+.obd-acts { flex-wrap: wrap; }
+.obd-acts small { flex: 1 0 100%; color: var(--text-2); font-size: 0.8rem; }
+.obd-acts .btn { white-space: nowrap; }
+
 /* video: full screen */
 #video-stage { background: #000; display: grid; place-items: center; z-index: 2100; }
 #video-stage[hidden] { display: none; }

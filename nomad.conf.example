@@ -22,3 +22,6 @@ MUSIC_OUT=~/CarMusic
 
 # News screen's starting feeds (Name|url, comma separated); edit them on the screen after that
 #NEWS_FEEDS=NPR|https://feeds.npr.org/1001/rss.xml, BBC World|https://feeds.bbci.co.uk/news/world/rss.xml
+
+# OBD-II adapter: auto (USB, then paired Bluetooth), /dev/ttyUSB1, bt:AA:BB:CC:DD:EE:FF, tcp:192.168.0.10:35000, or off
+#OBD_DEVICE=auto

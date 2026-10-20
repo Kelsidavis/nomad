@@ -15,7 +15,7 @@ Pi itself and keep working with no signal; it goes online only for what it doesn
 | **Weather** | NWS forecast and alerts, GOES-18 satellite pictures, radar on the map; cached for when you're offline |
 | **News** | RSS and Atom headlines (NPR, BBC, Guardian, Ars Technica to start; add any feed), downloaded in the background and kept for offline; "Truck, read the news" |
 | **Emergency** | Tsunami evacuation zones, routes and assembly areas (WA, OR; offline) with "am I in a zone?", one-tap routes to high ground, open FEMA shelters, Red Cross, community centers, hospitals and fire stations nearby, USGS earthquakes on the map with spoken alerts; "Truck, evacuate" |
-| **Vehicle** | GPS (gpsd), satellite sky plot, g-meter, compass, Pi power and temperature |
+| **Vehicle** | OBD-II through any ELM327 adapter (USB, Bluetooth or Wi-Fi): rpm, temperatures, voltage, fuel level, live and trip mpg, check-engine codes with descriptions (read, clear), "Truck, any engine codes?"; GPS (gpsd), satellite sky plot, g-meter, compass, Pi power and temperature |
 | **Boot** | NOMAD splash screen, quiet boot, and a session that is only the head unit: no desktop, panel or file manager |
 | **Look** | Android Auto-style layout from 800x480 up to 1080p, collapsible panels, dark/light by sunrise, accent color from the album art |
 
@@ -88,6 +88,7 @@ connection. `HEADUNIT_OFFLINE=1` turns the fallbacks off, to check the offline d
 | `HEADUNIT_HOME` | `lat,lon` for weather and satellite passes before there's a GPS fix or a home set in Settings |
 | `GPS_SERIAL` | the GPS bridge's serial for its udev rule; empty = whichever CP210x is plugged in at setup |
 | `PLEX_*`, `MUSIC_OUT` | defaults for `tools/plex_music.py` |
+| `OBD_DEVICE` | the OBD-II adapter: `auto` (USB ports, then paired Bluetooth adapters), `/dev/ttyUSB1`, `bt:<mac>`, `tcp:192.168.0.10:35000`, or `off`; `tools/elm327_sim.py` pretends to be one |
 | `NEWS_FEEDS` | the starting feed list, `Name|url, Name|url` (after that, edit it on the News screen) |
 
 Everything else is in the Settings screen: units, theme, accent color, voice, visualizer, home, Wi-Fi networks,
