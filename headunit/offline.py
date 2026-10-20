@@ -87,6 +87,27 @@ def imagery_tile(name, z, x, y):
     return row[0] if row else None
 
 
+def road_at(lat, lon, heading=None):
+    """The road under the truck and its posted limit, from the routing tiles (OpenStreetMap maxspeed):
+    {"road", "limit_kmh" (None when OSM has none), "tagged"}, or None off-road. With a heading, only the roads
+    running that way count (so a cross street or the far side of a divided highway isn't picked)."""
+    loc = {"lat": lat, "lon": lon, "radius": 25}
+    if heading is not None:
+        loc.update(heading=round(heading), heading_tolerance=40)
+    body = json.dumps({"verbose": True, "locations": [loc], "costing": "auto"}).encode()
+    req = urllib.request.Request(f"{VALHALLA}/locate", data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=3) as r:
+        edges = (json.load(r) or [{}])[0].get("edges") or []
+    edges = [e for e in edges if e.get("distance", 99) < 30]
+    if not edges:
+        return None
+    e = min(edges, key=lambda e: e.get("distance", 99))
+    info, edge = e.get("edge_info") or {}, e.get("edge") or {}
+    lim = info.get("speed_limit")
+    return {"road": (info.get("names") or [None])[0], "limit_kmh": lim if lim and lim < 200 else None,
+            "tagged": (edge.get("speeds") or {}).get("type") == "tagged"}
+
+
 def nearest_town(lat, lon):
     """Where we are, in words: {"name", "kind", "km", "dir"} for the closest city, town or village (offline), or
     None. "dir" is the compass direction from the town to us."""

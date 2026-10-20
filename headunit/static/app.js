@@ -7,7 +7,7 @@ const RAD = Math.PI / 180;
 
 // ---- settings (per screen, so localStorage is fine; the UI works without it) ----
 const DEFAULTS = { units: "imperial", theme: "auto", clock: "12", prompts: "on", orient: "heading", viz: "bars", vizColor: "album",
-  accent: "blue", voice: "af_bella", speakOn: "truck", notify: "hide" };
+  accent: "blue", voice: "af_bella", speakOn: "truck", notify: "hide", speedWarn: "show" };
 const settings = { ...DEFAULTS, ...load("settings", {}) };
 function load(key, fallback) {
   try { return JSON.parse(localStorage.getItem("hu." + key)) ?? fallback; } catch { return fallback; }
@@ -2695,6 +2695,31 @@ function paintEngineQuick(s) {
   bind("eng-volt", v.voltage != null ? v.voltage.toFixed(1) : "--");
 }
 
+
+// ---- speed limit (server.py road_loop: OpenStreetMap limits in the routing tiles) ----
+let overSince = 0, limitSaid = "";
+function paintLimit(s) {
+  const r = s.road, sign = $("#limit-sign"), chip = $("#speed-chip");
+  const lim = r?.limit_kmh;
+  sign.hidden = !lim || settings.speedWarn === "off";
+  if (!lim) { chip.classList.remove("over"); return; }
+  const imp = settings.units === "imperial";
+  const shown = imp ? Math.round(lim / 1.609344 / 5) * 5 : lim;  // OSM stores 25 mph as 40 km/h
+  sign.querySelector("b").textContent = shown;
+  sign.classList.toggle("metric", !imp);
+  const v = speedNow(s);
+  const kmh = v == null ? 0 : v * 3.6;
+  const over = settings.speedWarn !== "off" && kmh > (imp ? (shown + 5) * 1.609344 : shown + 8);
+  chip.classList.toggle("over", over);
+  if (!over) { overSince = 0; return; }
+  overSince ||= Date.now();
+  const key = `${r.road}:${shown}`;
+  if (settings.speedWarn === "say" && Date.now() - overSince > 4000 && limitSaid !== key) {
+    limitSaid = key;
+    say(`Speed limit ${shown}`);
+  }
+}
+
 // ---- live state ----
 let lastState = null;
 function onState(s) {
@@ -2708,6 +2733,7 @@ function onState(s) {
   checkMesh(s);
   checkAlerts(s);
   paintEngineQuick(s);
+  paintLimit(s);
   $("#st-net").setAttribute("class", "st " + (s.data === "offline" ? "off" : s.online ? (s.data === "saver" ? "warn" : "ok") : "off"));
   $("#st-net title").textContent = s.data === "offline" ? "Offline (Settings → Data use)" : !s.online ? "Offline: maps, routing, voice and music still work"
     : s.data === "saver" ? "Online, saving data" : "Online";

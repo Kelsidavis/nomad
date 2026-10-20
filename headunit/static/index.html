@@ -342,6 +342,10 @@
         <div class="btn-row"><button class="btn primary" id="bt-pair" data-action="bt-pair">Pair a phone</button>
           <button class="btn" id="bt-forget" data-action="bt-forget" hidden>Forget</button></div>
       </div>
+      <div class="setting stack">
+        <span>Speed limit<small>From OpenStreetMap, where it's mapped. The speed turns red 5 mph over.</small></span>
+        <div class="seg" data-setting="speedWarn"><button data-v="show">Show</button><button data-v="say">Show and say</button><button data-v="off">Off</button></div>
+      </div>
       <div class="setting">
         <span>Odometer<small id="odo-state">…</small></span>
         <button class="btn" data-action="odo-set">Set</button>
@@ -423,6 +427,7 @@
     <button class="panel-btn" data-action="panel-toggle" aria-label="Hide or show the panel"><svg><use href="#i-chev-left"/></svg></button>
     <button id="map-search" class="map-chip" data-action="search"><svg><use href="#i-search"/></svg>Search</button>
     <div id="speed-chip"><b data-bind="speed">--</b><span data-bind="speed-unit">mph</span></div>
+    <div id="limit-sign" hidden><small>SPEED<br>LIMIT</small><b>--</b></div>
     <div id="map-ctrls">
       <button class="map-btn" id="layers-btn" data-action="layers" aria-label="Map layers"><svg><use href="#i-layers"/></svg></button>
       <button class="map-btn" data-action="zoom-in" aria-label="Zoom in"><svg><use href="#i-plus"/></svg></button>

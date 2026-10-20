@@ -166,6 +166,7 @@ class State:
                 "obd": _obd_brief(),
                 "mesh": _mesh["brief"],
                 "alerts": trip.status()["alerts"],
+                "road": _road["v"] if now - _road["t"] < 15 else None,
             }
 
 
@@ -190,6 +191,29 @@ def mesh_call(path, body=None, timeout=4):
             return json.load(r)
     except urllib.error.HTTPError as e:
         raise OSError(json.load(e).get("error") or str(e)) from None
+
+
+# The road under the truck and its speed limit (offline.road_at), looked up every couple of seconds while moving.
+_road = {"v": None, "t": 0}
+
+
+def road_loop():
+    last, last_t = None, 0
+    while True:
+        time.sleep(2)
+        now = time.time()
+        p = state.position(now)
+        if not p:
+            continue
+        moving = (p.get("speed_mps") or 0) > 2
+        if last and now - last_t < 20 and offline._km(last[0], last[1], p["lat"], p["lon"]) < (0.015 if moving else 0.05):
+            _road["t"] = now  # still on it
+            continue
+        try:
+            _road["v"] = offline.road_at(p["lat"], p["lon"], p.get("track_deg") if moving else None)
+            _road["t"], last, last_t = now, (p["lat"], p["lon"]), now
+        except (OSError, ValueError):
+            pass  # routing not running
 
 
 def mesh_loop():
@@ -1136,7 +1160,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
                  lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here),
-                 lambda: radio.weather_loop(here), net_loop, news.news_loop, obd.obd_loop, mesh_loop,
+                 lambda: radio.weather_loop(here), net_loop, news.news_loop, obd.obd_loop, mesh_loop, road_loop,
                  lambda: trip.trip_loop(lambda: state.position(time.time()))):
         threading.Thread(target=loop, daemon=True).start()
     server = ThreadingHTTPServer((BIND, PORT), Handler)

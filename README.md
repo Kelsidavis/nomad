@@ -6,7 +6,7 @@ Pi itself and keep working with no signal; it goes online only for what it doesn
 
 | | |
 |---|---|
-| **Navigation** | Offline vector maps (Protomaps), aerial imagery (USGS), place search (OpenStreetMap, 18 M places), routing (Valhalla), turn-by-turn voice with prompts timed by speed, reroutes, home button, heading-up 3D view |
+| **Navigation** | Offline vector maps (Protomaps), aerial imagery (USGS), place search (OpenStreetMap, 18 M places), routing (Valhalla), turn-by-turn voice with prompts timed by speed, the speed limit of the road you're on (OpenStreetMap, offline) with an over-the-limit warning, reroutes, home button, heading-up 3D view |
 | **Map layers** | Satellite, NEXRAD weather radar, shaded relief, elevation colors, contours (ft/m), 3D terrain |
 | **Voice** | Push the mic: whisper.cpp speech-to-text, a fixed command grammar plus Gemma 4 E2B for anything else ("Truck, I need gas"), conversation without the keyword, all spoken back in Kokoro's Bella or Sky voice |
 | **Assistant** | A chat tab with Gemma 4 E2B, its reasoning streamed live as it thinks |

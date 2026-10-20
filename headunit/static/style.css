@@ -627,6 +627,17 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 .trip-row.foot { border-bottom: 0; justify-content: space-between; }
 .trip-row .bad { color: #ff6b5e; }
 
+/* speed limit sign: US style, or a red ring (km/h) */
+#limit-sign { position: absolute; left: 1.75rem; bottom: 7.7rem; z-index: 500; width: 4.1rem; padding: 0.3rem 0 0.25rem; border-radius: 0.5rem;
+  background: #fff; color: #000; border: 3px solid #000; box-shadow: 0 0 0 2px #fff, var(--shadow); display: flex; flex-direction: column; align-items: center; }
+#limit-sign[hidden] { display: none; }
+#limit-sign small { font-size: 0.55rem; font-weight: 800; line-height: 1.05; text-align: center; letter-spacing: 0.04em; }
+#limit-sign b { font-size: 1.7rem; line-height: 1; font-weight: 800; font-variant-numeric: tabular-nums; }
+#limit-sign.metric { width: 4.1rem; height: 4.1rem; padding: 0; border-radius: 50%; border: 0.45rem solid #d32f2f; justify-content: center; }
+#limit-sign.metric small { display: none; }
+#speed-chip.over { background: #d32f2f; }
+#speed-chip.over b, #speed-chip.over span { color: #fff; }
+
 /* video: full screen */
 #video-stage { background: #000; display: grid; place-items: center; z-index: 2100; }
 #video-stage[hidden] { display: none; }
