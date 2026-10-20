@@ -243,6 +243,7 @@ def _with_engine(context):
 
 
 state = State()
+_boot_logged = []
 
 
 def gps_loop():
@@ -1210,6 +1211,12 @@ class Handler(BaseHTTPRequestHandler):
                 pass
 
     def static(self, path):
+        if path in ("", "/") and not _boot_logged:  # how long after power-on the screen asked for the page
+            _boot_logged.append(1)
+            try:
+                print(f"screen loaded the page {float(open('/proc/uptime').read().split()[0]):.1f} s after boot", file=sys.stderr)
+            except OSError:
+                pass
         p = (STATIC / (path.lstrip("/") or "index.html")).resolve()
         if STATIC.resolve() not in p.parents or not p.is_file():
             return self.send(404, {"error": "not found"})

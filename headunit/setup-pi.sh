@@ -92,6 +92,9 @@ polkit.addRule(function (action, subject) {
 });
 EOT
 
+mkdir -p /etc/NetworkManager/conf.d
+printf '[connection]\n# NOMAD: Wi-Fi power saving drops packets and slows reconnects\nwifi.powersave = 2\n' > /etc/NetworkManager/conf.d/nomad-wifi-powersave.conf
+
 echo "== boot screen and no desktop: the NOMAD splash, quiet boot, and a session that is just the head unit"
 mkdir -p /usr/share/plymouth/themes/nomad && cp "$REPO"/headunit/boot/nomad/* /usr/share/plymouth/themes/nomad/
 grep -q '^disable_splash=1' "$C" || printf '\n[all]\n# NOMAD: no rainbow square at power-on\ndisable_splash=1\n' >> "$C"
