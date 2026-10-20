@@ -638,6 +638,11 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 #speed-chip.over { background: #d32f2f; }
 #speed-chip.over b, #speed-chip.over span { color: #fff; }
 
+/* weather on the way */
+.nav-wx { display: flex; flex-direction: column; gap: 0.3rem; margin: 0.3rem 0; }
+.nav-wx .wx-alert { margin: 0; }
+.nav-wx-arrive { font-size: 0.9rem; color: var(--text-2); }
+
 /* video: full screen */
 #video-stage { background: #000; display: grid; place-items: center; z-index: 2100; }
 #video-stage[hidden] { display: none; }

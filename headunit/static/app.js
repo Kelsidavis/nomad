@@ -524,6 +524,9 @@ function startNav() {
   if (lastPos) followView([lastPos.lat, lastPos.lon]);
   const r = nav.route, first = r.steps[0];
   prefetchPrompts(r, lastState?.position?.speed_mps ?? 0);
+  nav.wx = null;
+  paintRouteWeather();
+  setTimeout(routeWeather, 4000);  // after the start announcement
   const eta = fmtClock(new Date(Date.now() + r.duration * 1000), true);
   say(`Starting route to ${nav.dest.name}: ${fmtDur(r.duration).replace("min", "minutes").replace(" h ", " hours ")}, arriving at ${eta}. ` +
       `${first?.verbal_pre || first?.instruction || ""} ${r.stepAlong[1] > 400 ? first?.verbal_post || "" : ""}`.trim());
@@ -532,7 +535,8 @@ function startNav() {
 
 function endNav(arrived = false) {
   const last = nav.route?.steps[nav.route.steps.length - 1];
-  Object.assign(nav, { route: null, dest: null, active: false });
+  Object.assign(nav, { route: null, dest: null, active: false, wx: null });
+  paintRouteWeather();
   clearRoute();
   if (arrived && !nav.saidArrival) say(last?.type === "arrive" && last.instruction ? `${last.instruction}.` : "You have arrived");
   map.easeTo({ bearing: 0, pitch: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 600 });
@@ -2719,6 +2723,44 @@ function paintLimit(s) {
     say(`Speed limit ${shown}`);
   }
 }
+
+
+// ---- weather on the way (radio.route_weather): NWS alerts along the route, the forecast for the arrival ----
+const wxSaid = new Set();
+async function routeWeather() {
+  const r = nav.route, dest = nav.dest;
+  if (!r || !nav.active) return;
+  const pts = [];
+  let km = 0, next = 0;
+  for (let i = 0; i < r.coords.length; i++) {
+    if (i) km += haversine(r.coords[i - 1][0], r.coords[i - 1][1], r.coords[i][0], r.coords[i][1]) / 1000;
+    if (km >= next) { pts.push([r.coords[i][0], r.coords[i][1], km]); next = km + Math.max(30, km / 10); }
+  }
+  const end = r.coords[r.coords.length - 1];
+  pts.push([end[0], end[1], km]);
+  const sample = pts.length > 12 ? pts.filter((_, i) => i % Math.ceil(pts.length / 11) === 0).concat([pts[pts.length - 1]]) : pts;
+  const left = parseFloat(r.duration) || 0;
+  const w = await api("/api/route/weather", { json: { points: sample, arrive: Date.now() / 1000 + left } }).catch(() => null);
+  if (!w || nav.dest !== dest || !nav.active) return;  // (a reroute keeps the destination)
+  nav.wx = w;
+  paintRouteWeather();
+  for (const a of w.alerts) {
+    if (wxSaid.has(a.id) || !/Extreme|Severe|Moderate/.test(a.severity || "")) continue;
+    wxSaid.add(a.id);
+    say(`${a.event} along your route${a.km > 5 ? `, in about ${distUnit(a.km, 0).replace("mi", "miles").replace("km", "kilometers")}` : ""}.`);
+  }
+}
+function paintRouteWeather() {
+  const box = $("#nav-wx"), w = nav.wx;
+  box.hidden = !w || (!w.alerts.length && !w.arrival);
+  if (box.hidden) return;
+  const parts = [];
+  for (const a of w.alerts.slice(0, 3)) parts.push(`<div class="wx-alert">⚠ ${escapeHtml(a.event)}${a.km > 5 ? ` · in ${distUnit(a.km, 0)}` : " · here"}</div>`);
+  const ar = w.arrival;
+  if (ar) parts.push(`<div class="nav-wx-arrive">At arrival${ar.place ? ` (${escapeHtml(ar.place)})` : ""}: ${ar.temp}°${ar.unit} · ${escapeHtml(ar.sky || "")}${ar.rain ? ` · ${ar.rain}% rain` : ""}</div>`);
+  box.innerHTML = parts.join("");
+}
+setInterval(() => nav.active && routeWeather(), 15 * 60 * 1000);
 
 // ---- live state ----
 let lastState = null;

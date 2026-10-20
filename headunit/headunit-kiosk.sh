@@ -13,9 +13,11 @@ wait_for_server() {
 
 while :; do
     wait_for_server
-    # A profile of its own, so crash bubbles and the normal browser's tabs never show up here.
+    # A profile of its own, so crash bubbles and the normal browser's tabs never show up here. Its cache lives in
+    # /tmp (RAM): fewer SD card writes, and nothing half-written when the ignition cuts the power.
     chromium --kiosk "$URL" \
         --user-data-dir="$HOME/.config/headunit-chromium" \
+        --disk-cache-dir=/tmp/headunit-chromium-cache --disk-cache-size=104857600 \
         --ozone-platform=wayland \
         --noerrdialogs --disable-infobars --no-first-run --disable-session-crashed-bubble \
         --disable-features=TranslateUI,Translate,HardwareMediaKeyHandling \

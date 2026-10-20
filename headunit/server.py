@@ -953,6 +953,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, mesh_call(path[len("/api/mesh"):], self.body_json(), timeout=10))
                 except (OSError, ValueError) as e:
                     return self.send(400, {"error": str(e)[:160]})
+            if path == "/api/route/weather":  # {points: [[lat, lon, km_along]], arrive}: alerts on the way, weather on arrival
+                if not network.allowed("ask"):
+                    return self.send(200, {"alerts": [], "arrival": None, "offline": True})
+                body = self.body_json()
+                return self.send(200, radio.route_weather(body.get("points") or [], float(body.get("arrive") or time.time())))
             if path == "/api/trip/reset":  # {which: a | b}
                 return self.send(200, trip.reset(self.body_json().get("which", "a")))
             if path == "/api/trip/odometer":  # {km}

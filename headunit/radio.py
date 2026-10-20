@@ -332,6 +332,64 @@ def forecast(lat, lon, max_age_s=1800):
         return {**cached, "stale": True} if cached else None
 
 
+# ---- weather on the way: alerts at points along a route, and the forecast where and when it arrives ----
+_route_cache = {}  # (lat, lon) to 0.1° -> (time, alerts)
+
+
+def _alerts_at(lat, lon):
+    key = (round(lat, 1), round(lon, 1))
+    hit = _route_cache.get(key)
+    if hit and time.time() - hit[0] < 900:
+        return hit[1]
+    feats = _nws(f"https://api.weather.gov/alerts/active?point={lat:.3f},{lon:.3f}")["features"]
+    out = [{"id": f["properties"].get("id") or f.get("id"), "event": f["properties"].get("event"),
+            "headline": f["properties"].get("headline"), "severity": f["properties"].get("severity"),
+            "area": f["properties"].get("areaDesc"), "ends": f["properties"].get("ends") or f["properties"].get("expires")}
+           for f in feats[:6]]
+    _route_cache[key] = (time.time(), out)
+    return out
+
+
+def _arrival(lat, lon, arrive_ts):
+    """The hourly forecast at (lat, lon) for the hour of arrive_ts, or None."""
+    from datetime import datetime
+    try:
+        point = _nws(f"https://api.weather.gov/points/{lat:.4f},{lon:.4f}")["properties"]
+        for per in _nws(point["forecastHourly"])["properties"]["periods"][:48]:
+            start = datetime.fromisoformat(per["startTime"]).timestamp()
+            end = datetime.fromisoformat(per["endTime"]).timestamp()
+            if start <= arrive_ts < end or start > arrive_ts:
+                return {"temp": per.get("temperature"), "unit": per.get("temperatureUnit"), "sky": per.get("shortForecast"),
+                        "rain": (per.get("probabilityOfPrecipitation") or {}).get("value"), "wind": per.get("windSpeed"),
+                        "place": point.get("relativeLocation", {}).get("properties", {}).get("city")}
+    except (OSError, KeyError, ValueError, IndexError):
+        pass
+    return None
+
+
+def route_weather(points, arrive_ts):
+    """points: [[lat, lon, km_along], ...] along the route (the last is the destination). Returns {"alerts": [...]
+    (each once, with where along the route it starts), "arrival": the hourly forecast at the destination at
+    arrive_ts, or None}. Needs the internet; a point that fails is skipped. NWS can take several seconds for a point
+    it hasn't been asked about lately, so everything is asked at once."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def one(pt):
+        try:
+            return pt[2], _alerts_at(pt[0], pt[1])
+        except (OSError, KeyError, ValueError):
+            return pt[2], []
+    alerts, seen = [], set()
+    with ThreadPoolExecutor(8) as ex:
+        arrival = ex.submit(_arrival, points[-1][0], points[-1][1], arrive_ts) if points else None
+        for km, found in ex.map(one, points[:12]):
+            for a in found:
+                if a["id"] not in seen:
+                    seen.add(a["id"])
+                    alerts.append({**a, "km": round(km)})
+        return {"alerts": alerts, "arrival": arrival.result() if arrival else None}
+
+
 # ---- automatic satellite captures ----
 def radio_settings():
     try:
