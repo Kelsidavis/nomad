@@ -50,6 +50,7 @@ import obd  # noqa: E402
 import trip  # noqa: E402
 import adsb  # noqa: E402
 import fuel  # noqa: E402
+import drives  # noqa: E402
 
 PORT = int(os.environ.get("HEADUNIT_PORT", 8800))
 BIND = os.environ.get("HEADUNIT_BIND", "127.0.0.1")
@@ -875,6 +876,21 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/adsb":  # aircraft heard on 1090 MHz; asking keeps the receiver on for a while
                 adsb.want()
                 return self.send(200, adsb.status())
+            if path == "/api/drives":  # the drive history (newest first) and the drive going on now
+                return self.send(200, drives.history())
+            if path.startswith("/api/drives/"):  # /api/drives/<id>[?gpx=1]: one drive's track
+                d = drives.get(path.rsplit("/", 1)[1])
+                if not d:
+                    return self.send(404, {"error": "no such drive"})
+                if q.get("gpx"):
+                    self.send_response(200)
+                    body = drives.gpx(d).encode()
+                    self.send_header("Content-Type", "application/gpx+xml")
+                    self.send_header("Content-Disposition", f'attachment; filename="nomad-{d["id"]}.gpx"')
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    return self.wfile.write(body)
+                return self.send(200, d)
             if path == "/api/fuel":  # fill-ups with mpg, money spent, stations' prices, and the weekly averages
                 return self.send(200, {**fuel.summary(), "prices": fuel.prices(_state_code())})
             if path == "/api/trip":  # odometer, trips A and B, oil change
@@ -971,6 +987,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/adsb":  # {always}: keep receiving with the screen elsewhere
                 adsb.set_always(self.body_json().get("always"))
                 return self.send(200, adsb.status())
+            if path == "/api/drives/delete":  # {id} or {all: true}
+                body = self.body_json()
+                return self.send(200, drives.delete(None if body.get("all") else body["id"]))
+            if path == "/api/drives/setting":  # {on}
+                return self.send(200, drives.set_enabled(self.body_json().get("on", True)))
             if path == "/api/fuel/add":  # {gallons, price? | total?, full?, station?: {name, lat, lon}}
                 body = self.body_json()
                 try:

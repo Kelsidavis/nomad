@@ -11,6 +11,7 @@ import pathlib
 import threading
 import time
 
+import drives
 import obd
 
 DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit"))
@@ -117,6 +118,7 @@ def _check_engine(s):
 
 def trip_loop(position):
     """position() -> the current position dict (or None); ticks once a second."""
+    drives.recover()
     last = time.time()
     while True:
         time.sleep(1)
@@ -126,10 +128,10 @@ def trip_loop(position):
             continue
         s = obd.status()
         sp = s["values"].get("speed")
+        p = position()
         if s["status"] == "connected" and sp and now - sp["t"] < 5:
             kmh = sp["v"]
         else:
-            p = position()
             kmh = (p.get("speed_mps") or 0) * 3.6 if p and p.get("source") == "gps" and p.get("mode", 0) >= 2 else 0
             if kmh < 3:  # GPS wander at a stop
                 kmh = 0
@@ -149,6 +151,10 @@ def trip_loop(position):
                 _save()
             oil_due = (_d["odo_km"] is not None and _d["oil_at_km"] is not None
                        and _d["odo_km"] - _d["oil_at_km"] >= _d["oil_every_km"])
+        try:
+            drives.tick(p, kmh, now)
+        except OSError:
+            pass  # a full or read-only card mustn't stop the trip computer
         _alert("oil", oil_due, "warn", "An oil change is due. Tap Oil changed in Settings once it's done.")
         if s["status"] == "connected":
             _check_engine(s)

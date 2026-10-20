@@ -195,7 +195,7 @@ function showView(name) {
   if (name === "radio") loadRadio();
   if (name === "weather") loadWeather();
   if (name === "assistant") renderChat();
-  if (name === "settings") { paintBt(); paintWifi(); loadTrip(); }
+  if (name === "settings") { paintBt(); paintWifi(); loadTrip(); loadDrives(); }
   if (name === "emergency") loadEmergency();
   if (name === "news") loadNews();
   renderNav();
@@ -338,6 +338,9 @@ function buildStyle() {
     layers.splice(at < 0 ? layers.length : at, 0, { id: "radar", type: "raster", source: "radar",
       paint: { "raster-opacity": 0.72, "raster-fade-duration": 0 } });
   }
+  sources.drive = { type: "geojson", data: driveGeojson(driveData) };  // a past drive, from the Vehicle screen
+  layers.push({ id: "drive", type: "line", source: "drive", layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-color": "#ff9100", "line-width": ["interpolate", ["linear"], ["zoom"], 8, 3, 16, 7], "line-opacity": 0.85 } });
   sources.route = { type: "geojson", data: routeGeojson() };
   const lineLayout = { "line-join": "round", "line-cap": "round" };
   layers.push(
@@ -2404,6 +2407,7 @@ function renderVehicle(s) {
   renderObd(s.obd);
   if (!tripInfo || Date.now() - (renderVehicle.tripAt || 0) > 5000) { renderVehicle.tripAt = Date.now(); loadTrip(); }
   if (!fuelInfo || Date.now() - (renderVehicle.fuelAt || 0) > 60000) { renderVehicle.fuelAt = Date.now(); loadFuel(); }
+  if (!driveInfo || Date.now() - (renderVehicle.drivesAt || 0) > 30000) { renderVehicle.drivesAt = Date.now(); loadDrives(); }
   drawCompass(p ? heading : null);
   const acc = ph.linear_accel;  // the phone's accelerometer, when one is connected
   drawG(s.gps.g || (acc ? [acc[0] / 9.81, acc[1] / 9.81] : null));
@@ -2938,6 +2942,68 @@ async function fuelSay() {
   return msg;
 }
 
+
+// ---- drive history (drives.py): past drives on the Vehicle screen, one at a time on the map ----
+let driveInfo = null, shownDrive = null;
+async function loadDrives() {
+  driveInfo = await api("/api/drives").catch(() => driveInfo);
+  if (currentView === "vehicle") renderDrives();
+  if (currentView === "settings") paintDriveSetting();
+}
+function driveTitle(d) {
+  const a = d.start_place, b = d.end_place;
+  return a && b ? (a === b ? `Around ${a}` : `${a} → ${b}`) : a || b || "Drive";
+}
+function renderDrives() {
+  const box = $("#drives-kv"), d = driveInfo;
+  if (!box || !d) return;
+  if (!d.on) return (box.innerHTML = `<div class="fuel-note">Drive history is off (Settings).</div>`);
+  const dur = (s) => s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`;
+  const rows = [];
+  if (d.current) rows.push(`<button class="drive-row now" data-action="drive-show" data-id="current"><b>Driving now</b><span>${distUnit(d.current.km)} · ${dur(d.current.moving_s)}</span></button>`);
+  for (const x of d.drives.slice(0, 8)) {
+    const day = new Date(x.start * 1000);
+    rows.push(`<button class="drive-row${shownDrive === x.id ? " on" : ""}" data-action="drive-show" data-id="${x.id}">
+      <b>${escapeHtml(driveTitle(x))}</b><span>${day.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} ${fmtClock(day, true)} · ${distUnit(x.km)} · ${dur(x.moving_s)}</span></button>`);
+  }
+  if (!rows.length) rows.push(`<div class="fuel-note">Drives show up here after the first one (kept on the Pi only).</div>`);
+  if (shownDrive) rows.push(`<div class="drive-acts"><button class="btn" data-action="drive-hide">Hide from map</button>
+    ${shownDrive !== "current" ? `<button class="btn danger" data-action="drive-del">Delete drive</button>` : ""}</div>`);
+  box.innerHTML = rows.join("");
+}
+async function showDrive(id) {
+  const d = await api(`/api/drives/${id}`).catch(() => null);
+  if (!d?.pts?.length) return toast("That drive has no track");
+  shownDrive = id;
+  map.getSource("drive")?.setData(driveGeojson(d));
+  const lats = d.pts.map((p) => p[0]), lons = d.pts.map((p) => p[1]);
+  setFollow(false);
+  showView("home");
+  map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: 60, duration: 800, pitch: 0, bearing: 0 });
+  toast(`${driveTitle(d)} · ${distUnit(d.km)}`, 4000);
+}
+let driveData = null;
+function driveGeojson(d) {
+  driveData = d;
+  return { type: "FeatureCollection", features: d ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: d.pts.map((p) => [p[1], p[0]]) } }] : [] };
+}
+function hideDrive() {
+  shownDrive = null;
+  map.getSource("drive")?.setData(driveGeojson(null));
+  renderDrives();
+}
+function paintDriveSetting() {
+  if (!driveInfo) return;
+  for (const b of $$("#drives-seg button")) b.classList.toggle("on", (b.dataset.v === "on") === driveInfo.on);
+  $("#drives-state").textContent = driveInfo.on ? `${driveInfo.drives.length} drive${driveInfo.drives.length === 1 ? "" : "s"} kept on the Pi only` : "Off: nothing is recorded";
+}
+$("#drives-seg").addEventListener("click", async (e) => {
+  const v = e.target.closest("button")?.dataset.v;
+  if (!v) return;
+  await api("/api/drives/setting", { json: { on: v === "on" } });
+  loadDrives();
+});
+
 // ---- live state ----
 let lastState = null;
 function onState(s) {
@@ -3344,6 +3410,10 @@ const ACTIONS = {
   "np-add": () => { const t = curTrack(); if (t) openSaveSheet([media.idIndex.get(t.id)]); else toast("Nothing playing"); },
   "pl-close": () => ($("#pl-sheet").hidden = true),
   "news-refresh": () => loadNews(true),
+  "drive-show": (btn) => showDrive(btn.dataset.id),
+  "drive-hide": hideDrive,
+  "drive-del": async () => { if (!confirm("Delete this drive?")) return; driveInfo = await api("/api/drives/delete", { json: { id: shownDrive } }); hideDrive(); },
+  "drives-clear": async () => { if (!confirm("Delete the whole drive history?")) return; driveInfo = await api("/api/drives/delete", { json: { all: true } }); hideDrive(); paintDriveSetting(); toast("Drive history deleted"); },
   "fuel-add": () => { kbLayer = "num"; openSearch("", "fuel"); },
   "fuel-del": async (btn) => { if (!confirm("Delete this fill-up?")) return; fuelInfo = { ...fuelInfo, ...(await api("/api/fuel/delete", { json: { id: btn.dataset.id } })) }; renderFuel(); },
   "trip-reset": async (btn) => { if (!confirm(`Reset trip ${btn.dataset.trip.toUpperCase()}?`)) return; tripInfo = await api("/api/trip/reset", { json: { which: btn.dataset.trip } }); renderTrip(); },

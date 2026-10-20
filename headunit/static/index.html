@@ -305,6 +305,7 @@
       </div>
       <div class="card trip-card"><div class="eyebrow">Trip computer</div><div id="trip-kv"></div></div>
       <div class="card trip-card"><div class="eyebrow">Fuel</div><div id="fuel-kv"></div></div>
+      <div class="card trip-card"><div class="eyebrow">Drives</div><div id="drives-kv"></div></div>
       <div class="kv" id="vehicle-kv"></div>
     </div>
 
@@ -348,6 +349,11 @@
       <div class="setting stack">
         <span>Speed limit<small>From OpenStreetMap, where it's mapped. The speed turns red 5 mph over.</small></span>
         <div class="seg" data-setting="speedWarn"><button data-v="show">Show</button><button data-v="say">Show and say</button><button data-v="off">Off</button></div>
+      </div>
+      <div class="setting stack">
+        <div class="setting-row"><span>Drive history<small id="drives-state">…</small></span>
+          <button class="btn danger" data-action="drives-clear">Delete all</button></div>
+        <div class="seg" id="drives-seg"><button data-v="on">On</button><button data-v="off">Off</button></div>
       </div>
       <div class="setting">
         <span>Odometer<small id="odo-state">…</small></span>
