@@ -671,6 +671,12 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 .sys-kv { background: var(--card-2); padding: 0.2rem 0.9rem; }
 .sys-kv .kv-row { font-size: 0.88rem; padding: 0.45rem 0; }
 
+/* timers */
+#timer-chip { position: absolute; z-index: 500; top: 4.6rem; left: 50%; transform: translateX(-50%); gap: 0.5rem; }
+#timer-chip[hidden] { display: none; }
+#timer-chip b { font-variant-numeric: tabular-nums; color: var(--accent); }
+#timer-chip span { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* video: full screen */
 #video-stage { background: #000; display: grid; place-items: center; z-index: 2100; }
 #video-stage[hidden] { display: none; }

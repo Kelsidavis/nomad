@@ -3118,6 +3118,50 @@ async function runSelftest() {
     kvRows(r.results.map((x) => [escapeHtml(x.name), escapeHtml(x.detail), x.ok ? "good" : x.required ? "bad" : "warn-t"]));
 }
 
+
+// ---- timers and reminders ("Truck, remind me to call Mom in 20 minutes"): spoken when due, kept across reloads ----
+let timers = load("timers", []);  // [{id, at, text}]
+const NUMS = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11,
+  twelve: 12, fifteen: 15, twenty: 20, "twenty five": 25, thirty: 30, forty: 40, "forty five": 45, fifty: 50, sixty: 60, ninety: 90 };
+function parseSpan(text) {  // "20 minutes", "an hour and a half", "half an hour", "90 seconds" -> ms
+  if (/half an hour/.test(text)) return 30 * 60000;
+  const m = text.match(/(\d+(?:\.\d+)?|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty(?: five)?|thirty|forty(?: five)?|fifty|sixty|ninety) (second|minute|min|hour|hr)s?( and a half)?/);
+  if (!m) return null;
+  const n = (isNaN(+m[1]) ? NUMS[m[1]] : +m[1]) + (m[3] ? 0.5 : 0);
+  return n * ({ second: 1000, minute: 60000, min: 60000, hour: 3600000, hr: 3600000 })[m[2]];
+}
+function addTimer(ms, text) {
+  const t = { id: Date.now(), at: Date.now() + ms, text: text || "" };
+  timers = [...timers, t].sort((a, b) => a.at - b.at);
+  save("timers", timers);
+  paintTimers();
+  return t;
+}
+const spanWords = (ms) => ms >= 3600000 ? `${+(ms / 3600000).toFixed(1)} hour${ms === 3600000 ? "" : "s"}` : ms >= 60000 ? `${Math.round(ms / 60000)} minute${Math.round(ms / 60000) === 1 ? "" : "s"}` : `${Math.round(ms / 1000)} seconds`;
+function paintTimers() {
+  const chip = $("#timer-chip");
+  const t = timers[0];
+  chip.hidden = !t;
+  if (!t) return;
+  const left = Math.max(0, t.at - Date.now()), s = Math.round(left / 1000);
+  const clock = s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  chip.querySelector("b").textContent = clock;
+  chip.querySelector("span").textContent = (t.text || "Timer") + (timers.length > 1 ? ` · +${timers.length - 1}` : "");
+}
+setInterval(() => {
+  if (!timers.length) return;
+  const due = timers.filter((t) => t.at <= Date.now());
+  if (due.length) {
+    timers = timers.filter((t) => t.at > Date.now());
+    save("timers", timers);
+    for (const t of due) {
+      toast(`⏰ ${t.text ? `Reminder: ${t.text}` : "Timer done"}`, 15000);
+      say(t.text ? `Reminder: ${t.text}` : "Your timer is done");
+    }
+  }
+  paintTimers();
+}, 1000);
+
 // ---- live state ----
 let lastState = null;
 function onState(s) {
@@ -3435,6 +3479,29 @@ async function runCommand(raw, fromModel = false) {
     return msg;
   }
   if (/(gas|fuel|diesel) prices?|price of (gas|fuel|diesel)|how much is (gas|fuel|diesel)/.test(text)) return fuelSay();
+  if ((m = text.match(/^(?:set (?:a |the )?)?timer (?:for )?(.+)$|^set (?:a )?(.+) timer$/))) {
+    const ms = parseSpan(m[1] || m[2]);
+    if (ms) { addTimer(ms, ""); const msg = `Timer set for ${spanWords(ms)}`; say(msg); return msg; }
+  }
+  if ((m = text.match(/^remind me (?:to |about )?(.+?) in (.+)$/)) || (m = text.match(/^in (.+?) remind me (?:to |about )?(.+)$/))) {
+    const [what, span] = text.startsWith("in ") ? [m[2], m[1]] : [m[1], m[2]];
+    const ms = parseSpan(span);
+    if (ms) { addTimer(ms, what.replace(/\bmy\b/g, "your")); const msg = `OK, in ${spanWords(ms)}`; say(msg); return msg; }
+  }
+  if (/^(cancel|stop|clear|delete) (the |my |all )?(timers?|reminders?)$/.test(text)) {
+    const n = timers.length;
+    timers = /all/.test(text) ? [] : timers.slice(1);
+    save("timers", timers);
+    paintTimers();
+    const msg = n ? "Cancelled" : "No timers";
+    say(msg);
+    return msg;
+  }
+  if (/(how much|how long) (time )?(is )?left|time left on/.test(text) && timers.length) {
+    const msg = `${spanWords(timers[0].at - Date.now())} left${timers[0].text ? ` until ${timers[0].text}` : ""}`;
+    say(msg);
+    return msg;
+  }
   if (/speed limit/.test(text)) {
     const r = lastState?.road, imp = settings.units === "imperial";
     const msg = !r ? "I don't know which road we're on" : !r.limit_kmh ? `No speed limit mapped for ${r.road || "this road"}`
@@ -3534,6 +3601,10 @@ const ACTIONS = {
   "np-add": () => { const t = curTrack(); if (t) openSaveSheet([media.idIndex.get(t.id)]); else toast("Nothing playing"); },
   "pl-close": () => ($("#pl-sheet").hidden = true),
   "news-refresh": () => loadNews(true),
+  "timer-cancel": () => {
+    const t = timers[0];
+    if (t && confirm(`Cancel ${t.text ? `the reminder “${t.text}”` : "the timer"}?`)) { timers = timers.slice(1); save("timers", timers); paintTimers(); }
+  },
   "sys-test": runSelftest,
   "drive-show": (btn) => showDrive(btn.dataset.id),
   "drive-hide": hideDrive,
