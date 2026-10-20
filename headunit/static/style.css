@@ -677,6 +677,11 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 #timer-chip b { font-variant-numeric: tabular-nums; color: var(--accent); }
 #timer-chip span { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* voice command guide */
+.help-row { min-height: 3rem; padding: 0.5rem 0.9rem; }
+.help-row .t { font-size: 1rem; }
+.help-row.say-only .t { color: var(--text-2); }
+
 /* video: full screen */
 #video-stage { background: #000; display: grid; place-items: center; z-index: 2100; }
 #video-stage[hidden] { display: none; }

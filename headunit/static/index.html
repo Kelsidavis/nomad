@@ -226,6 +226,7 @@
           <button class="btn" id="chat-think" data-action="chat-think"><svg><use href="#i-bulb"/></svg>Think</button>
           <button class="btn" id="chat-speak" data-action="chat-speak"><svg><use href="#i-volume"/></svg>Read aloud</button>
           <button class="btn" data-action="chat-clear"><svg><use href="#i-close"/></svg>Clear</button>
+          <button class="btn" data-action="help-open"><svg><use href="#i-mic"/></svg>Commands</button>
         </div>
       </div>
       <div class="chat" id="chat-log"></div>
@@ -241,6 +242,12 @@
       <div class="view-head"><h2>Weather</h2>
         <button class="icon-btn" data-action="wx-refresh" aria-label="Refresh"><svg><use href="#i-locate"/></svg></button></div>
       <div class="list" id="wx-list"><div class="empty">Loading…</div></div>
+    </div>
+
+    <!-- Voice command guide -->
+    <div class="view" id="view-help">
+      <div class="view-head"><h2>Voice commands</h2></div>
+      <div class="list" id="help-list"></div>
     </div>
 
     <!-- News: RSS and Atom headlines -->
@@ -374,6 +381,10 @@
         <span>Home<small id="home-addr">Not set</small></span>
         <div class="btn-row"><button class="btn" data-action="home-here">Use current location</button>
           <button class="btn" id="home-clear" data-action="home-clear" hidden>Clear</button></div>
+      </div>
+      <div class="setting">
+        <span>Voice commands<small>Everything you can say</small></span>
+        <button class="btn" data-action="help-open">Show</button>
       </div>
       <div class="setting">
         <span>Voice</span>

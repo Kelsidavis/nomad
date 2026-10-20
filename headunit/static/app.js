@@ -198,6 +198,7 @@ function showView(name) {
   if (name === "settings") { paintBt(); paintWifi(); loadTrip(); loadDrives(); paintSystem(); }
   if (name === "emergency") loadEmergency();
   if (name === "news") loadNews();
+  if (name === "help") renderHelp();
   renderNav();
 }
 
@@ -3177,6 +3178,36 @@ async function moreLikeThis() {
   return r;
 }
 
+
+// ---- the voice command guide (Settings → Voice commands, the Assistant's Commands button, "Truck, help") ----
+// (only the ones that just look something up or move the map run when tapped: no fake fill-ups or routes)
+const TRY_SAFE = /^(where are we|what's the speed limit|find coffee|gas on the way|rest areas ahead|zoom in|any engine codes|what's my gas mileage|when's my oil change|how much is gas|how fast am i going|how much time is left|what time is it|what plane is that|read mesh messages|read the news)$/i;
+const COMMANDS = [
+  ["Navigation", ["navigate home", "navigate to Seattle", "find coffee", "gas on the way", "rest areas ahead", "I need gas", "where are we", "what's the speed limit", "cancel navigation", "zoom in"]],
+  ["Music", ["play Fleetwood Mac", "play something chill", "more like this", "next song", "pause", "volume up"]],
+  ["Truck", ["any engine codes", "what's my gas mileage", "when's my oil change", "I put in 18.5 gallons at 3.89", "how much is gas", "reset trip", "how fast am I going"]],
+  ["Time", ["set a timer for 10 minutes", "remind me to call Mom in 20 minutes", "how much time is left", "cancel the timer", "what time is it"]],
+  ["Radio and sky", ["what plane is that", "tell the mesh I'm on my way", "read mesh messages"]],
+  ["News and safety", ["read the news", "evacuate", "nearest hospital", "nearest shelter"]],
+];
+function renderHelp() {
+  const name = NAME.charAt(0).toUpperCase() + NAME.slice(1);
+  const rows = [note(`Start with “${name}”, then say it. Anything else is a conversation with the assistant. Questions run when tapped.`)];
+  for (const [group, list] of COMMANDS) {
+    rows.push(head(group));
+    for (const c of list) {
+      const b = document.createElement("button");
+      b.className = "list-item help-row";
+      b.innerHTML = `<span class="t"></span>`;
+      b.querySelector(".t").textContent = `“${name}, ${c}”`;
+      if (TRY_SAFE.test(c)) b.onclick = async () => { const r = await runCommand(c); if (r) toast(r); };
+      else { b.classList.add("say-only"); b.onclick = () => toast("Say it to use it (it changes something)"); }
+      rows.push(b);
+    }
+  }
+  $("#help-list").replaceChildren(...rows);
+}
+
 // ---- live state ----
 let lastState = null;
 function onState(s) {
@@ -3539,6 +3570,12 @@ async function runCommand(raw, fromModel = false) {
     const r = await moreLikeThis();
     return r ? `Playing more like ${curTrack()?.title || "this"}` : "Nothing playing";
   }
+  if (/^(help|commands|what can (you do|i say)|what do you (do|know)|voice commands)$/.test(text)) {
+    showView("help");
+    const msg = "Here's what I can do. Say my name first, then the command.";
+    say(msg);
+    return msg;
+  }
   if (/speed limit/.test(text)) {
     const r = lastState?.road, imp = settings.units === "imperial";
     const msg = !r ? "I don't know which road we're on" : !r.limit_kmh ? `No speed limit mapped for ${r.road || "this road"}`
@@ -3638,6 +3675,7 @@ const ACTIONS = {
   "np-add": () => { const t = curTrack(); if (t) openSaveSheet([media.idIndex.get(t.id)]); else toast("Nothing playing"); },
   "pl-close": () => ($("#pl-sheet").hidden = true),
   "news-refresh": () => loadNews(true),
+  "help-open": () => showView("help"),
   "np-like": moreLikeThis,
   "timer-cancel": () => {
     const t = timers[0];
