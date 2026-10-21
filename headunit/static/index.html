@@ -54,6 +54,7 @@
   <symbol id="i-star" viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.9 3.9.1.1 4-4H6a7 7 0 1 1 2.1 5l-1.4 1.4A9 9 0 1 0 13 3zm-1 5v5l4.3 2.5.7-1.2-3.5-2.1V8z"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24"><path d="M18 8h-1V6A5 5 0 0 0 7 6v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2zm-6 9a2 2 0 1 1 2-2 2 2 0 0 1-2 2zm3.1-9H8.9V6a3.1 3.1 0 0 1 6.2 0z"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM2 13h2a1 1 0 0 0 0-2H2a1 1 0 0 0 0 2zm18 0h2a1 1 0 0 0 0-2h-2a1 1 0 0 0 0 2zM11 2v2a1 1 0 0 0 2 0V2a1 1 0 0 0-2 0zm0 18v2a1 1 0 0 0 2 0v-2a1 1 0 0 0-2 0zM5.99 4.58a1 1 0 0 0-1.41 1.41l1.06 1.06a1 1 0 0 0 1.41-1.41zm12.37 12.37a1 1 0 0 0-1.41 1.41l1.06 1.06a1 1 0 0 0 1.41-1.41zm1.06-10.96a1 1 0 0 0-1.41-1.41l-1.06 1.06a1 1 0 0 0 1.41 1.41zM7.05 18.36a1 1 0 0 0-1.41-1.41l-1.06 1.06a1 1 0 0 0 1.41 1.41z"/></symbol>
+  <symbol id="i-ship" viewBox="0 0 24 24"><path d="M12 2 7 8v10l2.5 3h5L17 18V8z"/></symbol>
   <symbol id="i-volume" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></symbol>
   <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 16.5-7.4-5.7L3 12l9 7 9-7-1.6-1.2zM12 14l7.4-5.7L21 7l-9-7-9 7 1.6 1.3z"/></symbol>
   <symbol id="i-turn" viewBox="0 0 48 48"><path d="M24 4 12 18h8v26h8V18h8z"/></symbol>
@@ -220,7 +221,7 @@
       </div>
       <div class="media-tabs" id="radio-tabs">
         <button data-tab="fm">FM</button><button data-tab="am">AM</button><button data-tab="weather">NOAA</button>
-        <button data-tab="scanner">Scanner</button><button data-tab="sats">Satellites</button><button data-tab="air">Aircraft</button><button data-tab="mesh">Mesh</button>
+        <button data-tab="scanner">Scanner</button><button data-tab="sats">Satellites</button><button data-tab="air">Aircraft</button><button data-tab="ships">Ships</button><button data-tab="mesh">Mesh</button><button data-tab="sdr">Listening</button>
       </div>
       <div class="list" id="radio-list"><div class="empty">Loading…</div></div>
     </div>
@@ -317,6 +318,7 @@
         </div>
       </div>
       <div class="card trip-card"><div class="eyebrow">Trip computer</div><div id="trip-kv"></div></div>
+      <div class="card trip-card"><div class="eyebrow">Tires</div><div id="tpms-kv"></div></div>
       <div class="card trip-card"><div class="eyebrow">Fuel</div><div id="fuel-kv"></div></div>
       <div class="card trip-card"><div class="eyebrow">Drives</div><div id="drives-kv"></div></div>
       <div class="kv" id="vehicle-kv"></div>
@@ -468,6 +470,7 @@
       <button class="map-btn" id="recenter" data-action="recenter" aria-label="Re-center" hidden><svg><use href="#i-locate"/></svg></button>
     </div>
     <div id="plane-card" hidden></div>
+    <div id="nwr-banner" hidden></div>
     <!-- the volume, top right: down, mute, up -->
     <div id="nav-vol">
       <button class="icon-btn" data-action="vol-down" aria-label="Volume down"><svg><use href="#i-minus"/></svg></button>
@@ -496,6 +499,7 @@
       <button data-layer="tsunami"><svg><use href="#i-sos"/></svg>Tsunami zones</button>
       <button data-layer="quakes"><svg><use href="#i-contour"/></svg>Earthquakes</button>
       <button data-layer="aircraft"><svg><use href="#i-plane"/></svg>Aircraft (SDR)</button>
+      <button data-layer="ships"><svg><use href="#i-ship"/></svg>Ships (SDR)</button>
     </div>
   </main>
 </div>

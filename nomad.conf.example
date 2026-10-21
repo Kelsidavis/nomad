@@ -39,3 +39,14 @@ MUSIC_OUT=~/CarMusic
 # for your vehicle), and the percent of the tank to keep in reserve (default 10)
 #FUEL_TANK_GAL=24
 #FUEL_RESERVE_PCT=10
+
+# SDR listening (Radio -> Listening turns each on or off). The tire sensors' frequency: 315M (US, the default) or
+# 433.92M (Europe); the pressure under which a tire counts as low (psi, default 28: your door-jamb figure minus ~20%);
+# one weather radio frequency instead of scanning all seven (162.55 for example)
+#TPMS_FREQ=315M
+#TPMS_LOW_PSI=28
+#NWR_FREQ=162.55M
+
+# Screen brightness: auto, backlight (a DSI touchscreen), ddc (an HDMI monitor, needs ddcutil) or software
+#BRIGHTNESS=auto
+

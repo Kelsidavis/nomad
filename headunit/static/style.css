@@ -740,3 +740,18 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 #vol-mute.muted { color: var(--bad); }
 #vol-level { font-variant-numeric: tabular-nums; font-size: 1rem; }
 .maplibregl-ctrl-top-right { top: 4.9rem; }
+
+/* tire pressures (Vehicle) and the emergency-broadcast banner over the map */
+.tires { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.tire { background: var(--card-2); border-radius: 0.8rem; padding: 0.6rem 0.8rem; display: flex; flex-direction: column; }
+.tire b { font-size: 1.8rem; font-variant-numeric: tabular-nums; } .tire b i { font-size: 0.9rem; font-style: normal; color: var(--text-2); }
+.tire small { color: var(--text-2); font-size: 0.8rem; }
+.tire.low { outline: 2px solid var(--bad); } .tire.low b { color: var(--bad); }
+.tpms-sensor { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; margin-top: 0.4rem; font-size: 0.9rem; }
+.tpms-sensor small { color: var(--text-2); }
+.tpms-sensor .wheels { display: flex; gap: 0.25rem; flex: none; }
+.tpms-sensor .btn { min-height: 2.4rem; padding: 0 0.6rem; }
+#nwr-banner { position: absolute; z-index: 700; top: 1rem; left: 1rem; right: 1rem; max-width: 36rem; display: flex;
+  flex-wrap: wrap; align-items: center; gap: 0.2rem 0.8rem; padding: 0.8rem 1rem; border-radius: var(--radius); background: var(--bad); color: #fff; box-shadow: var(--shadow); }
+#nwr-banner[hidden] { display: none; }
+#nwr-banner b { font-size: 1.3rem; } #nwr-banner span { flex: 1; min-width: 8rem; opacity: 0.9; }

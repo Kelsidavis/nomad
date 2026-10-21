@@ -12,10 +12,21 @@ export DEBIAN_FRONTEND=noninteractive
 
 echo "== packages"
 apt-get update -qq
-apt-get install -y -qq adb rclone fuse3 gpsd gpsd-clients chrony docker.io alsa-utils rtl-sdr satdump ffmpeg python3-venv fonts-noto-color-emoji ddcutil brightnessctl >/dev/null
+apt-get install -y -qq adb rclone fuse3 gpsd gpsd-clients chrony docker.io alsa-utils rtl-sdr satdump ffmpeg python3-venv fonts-noto-color-emoji ddcutil brightnessctl rtl-ais rtl-433 multimon-ng cmake librtlsdr-dev libusb-1.0-0-dev zlib1g-dev libjansson-dev libxml2-dev libsndfile1-dev libcurl4-openssl-dev pkg-config >/dev/null
 
 echo "== SDR: keep the kernel's DVB-T TV driver off the dongle so rtl-sdr can use it"
 printf 'blacklist dvb_usb_rtl28xxu\nblacklist rtl2832\nblacklist rtl2830\n' > /etc/modprobe.d/rtl-sdr-blacklist.conf
+
+echo "== ACARS decoder (acarsdec and libacars, built here: not in Debian)"
+if ! command -v acarsdec >/dev/null; then
+    B=$(mktemp -d)
+    git clone -q --depth 1 https://github.com/szpajder/libacars.git "$B/libacars" && cmake -S "$B/libacars" -B "$B/libacars/build" -DCMAKE_BUILD_TYPE=Release >/dev/null \
+        && make -C "$B/libacars/build" -j2 >/dev/null && make -C "$B/libacars/build" install >/dev/null && ldconfig
+    git clone -q --depth 1 https://github.com/TLeconte/acarsdec.git "$B/acarsdec" && cmake -S "$B/acarsdec" -B "$B/acarsdec/build" -Drtl=ON -DCMAKE_BUILD_TYPE=Release >/dev/null \
+        && make -C "$B/acarsdec/build" -j2 >/dev/null && install -m 755 "$B/acarsdec/build/acarsdec" /usr/local/bin/acarsdec \
+        || echo "(acarsdec didn't build: aircraft messages stay off)"
+    rm -rf "$B"
+fi
 
 echo "== mic HAT (WM8960)"
 C=/boot/firmware/config.txt

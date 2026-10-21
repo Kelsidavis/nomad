@@ -49,6 +49,11 @@ import news  # noqa: E402
 import obd  # noqa: E402
 import trip  # noqa: E402
 import adsb  # noqa: E402
+import acars  # noqa: E402
+import ais  # noqa: E402
+import nwr  # noqa: E402
+import sdr  # noqa: E402
+import tpms  # noqa: E402
 import fuel  # noqa: E402
 import display  # noqa: E402
 import drives  # noqa: E402
@@ -916,6 +921,16 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/adsb":  # aircraft heard on 1090 MHz; asking keeps the receiver on for a while
                 adsb.want()
                 return self.send(200, adsb.status())
+            if path == "/api/sdr":  # the SDR's time slices: what they are, when they last ran, whether they're on
+                return self.send(200, sdr.status())
+            if path == "/api/ais":  # ships heard on 162 MHz, nearest first
+                return self.send(200, ais.status(here()))
+            if path == "/api/tpms":  # the truck's tire pressures, and every sensor heard
+                return self.send(200, tpms.status())
+            if path == "/api/nwr":  # emergency broadcasts from weather radio
+                return self.send(200, nwr.status())
+            if path == "/api/acars":  # aircraft text messages
+                return self.send(200, acars.status())
             if path == "/api/system":  # Settings → System
                 return self.send(200, system_info())
             if path == "/api/drives":  # the drive history (newest first) and the drive going on now
@@ -1038,6 +1053,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, mesh_call(path[len("/api/mesh"):], self.body_json(), timeout=10))
                 except (OSError, ValueError) as e:
                     return self.send(400, {"error": str(e)[:160]})
+            if path == "/api/sdr":  # {name, enabled}
+                b = self.body_json()
+                sdr.set_enabled(b["name"], b["enabled"])
+                return self.send(200, sdr.status())
+            if path == "/api/tpms/assign":  # {key, wheel: FL|FR|RL|RR|""}
+                b = self.body_json()
+                try:
+                    return self.send(200, tpms.assign(b["key"], b.get("wheel")))
+                except ValueError as e:
+                    return self.send(400, {"error": str(e)})
+            if path == "/api/tpms/forget":  # {key}
+                return self.send(200, tpms.forget(self.body_json()["key"]))
             if path == "/api/adsb":  # {always}: keep receiving with the screen elsewhere
                 adsb.set_always(self.body_json().get("always"))
                 return self.send(200, adsb.status())
@@ -1290,13 +1317,20 @@ def _warm_vibe():
         music.vibe("warm up", lib["tracks"], lib["tags"], n=1)
 
 
+def sdr_context():
+    """What the SDR's time slices ask about: moving, online, and whether aircraft are about."""
+    p = state.position(time.time())
+    return {"moving": bool(p and (p.get("speed_mps") or 0) > 4.5), "online": state.online,
+            "aircraft": sum(1 for a in adsb.status()["aircraft"] if a["age"] < 120)}
+
+
 def main():
     display.start()  # the screen back at its saved brightness before any page is open
     intent.WARMERS.append(_warm_vibe)  # the vibe prompt is the longest: cache it before the first mix
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
                  lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here),
                  lambda: radio.weather_loop(here), net_loop, news.news_loop, obd.obd_loop, mesh_loop, road_loop,
-                 lambda: trip.trip_loop(lambda: state.position(time.time())), lambda: adsb.adsb_loop(here)):
+                 lambda: trip.trip_loop(lambda: state.position(time.time())), lambda: adsb.adsb_loop(here), lambda: sdr.sdr_loop(here, sdr_context)):
         threading.Thread(target=loop, daemon=True).start()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True

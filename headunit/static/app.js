@@ -213,7 +213,7 @@ let home = load("home", null);  // {name, address, lat, lon}: Settings → Home
 let radarOn = load("radar", false);
 // Elevation layers (server.py /terrain: the downloaded DEM, else AWS when online). mlcontour makes contour lines
 // from the same tiles in a worker.
-const terrain = { hillshade: false, relief: false, contours: false, "3d": false, tsunami: false, quakes: false, aircraft: false, ...load("terrainLayers", {}) };
+const terrain = { hillshade: false, relief: false, contours: false, "3d": false, tsunami: false, quakes: false, aircraft: false, ships: false, ...load("terrainLayers", {}) };
 let dem = null;  // mlcontour.DemSource, made in initMap
 const DEM_MAXZOOM = 11;  // NEXRAD radar over the map (radio.py radar_tile), new frames every 5 min
 const radarStamp = () => Math.floor(Date.now() / 300000);
@@ -327,6 +327,14 @@ function buildStyle() {
           "icon-halo-color": "#000", "icon-halo-width": 1,
           "text-color": theme === "dark" ? "#ffe082" : "#6d4c00", "text-halo-color": theme === "dark" ? "#000" : "#fff", "text-halo-width": 1.2 } });
   }
+  if (terrain.ships) {  // AIS (ais.py): filled by pollShips
+    sources.ships = { type: "geojson", data: shipsGeojson(ais.data) };
+    layers.push({ id: "ships", type: "symbol", source: "ships", layout: { "icon-image": "ship", "icon-size": ["interpolate", ["linear"], ["zoom"], 6, 0.4, 12, 0.65],
+      "icon-rotate": ["get", "dir"], "icon-rotation-alignment": "map", "icon-allow-overlap": true,
+      "text-field": ["get", "label"], "text-size": 11, "text-offset": [0, 1.5], "text-anchor": "top", "text-font": ["Noto Sans Medium"], "text-optional": true },
+      paint: { "icon-color": ["case", ["==", ["get", "moving"], 1], "#26c6da", "#78909c"], "icon-halo-color": "#000", "icon-halo-width": 1,
+        "text-color": theme === "dark" ? "#b2ebf2" : "#006064", "text-halo-color": theme === "dark" ? "#000" : "#fff", "text-halo-width": 1.2 } });
+  }
   // LoRa mesh nodes with a position (mesh_bridge.py); filled from the live state
   sources.mesh = { type: "geojson", data: meshGeojson() };
   layers.push(
@@ -367,6 +375,7 @@ function toggleLayer(key) {
   paintLayers();
   restyleMap();
   if (key === "aircraft") pollAir();
+  if (key === "ships") pollShips();
 }
 function paintLayers() {
   const on = { satellite, radar: radarOn, ...terrain };
@@ -409,15 +418,22 @@ async function initMap() {
     center: lastPos ? [lastPos.lon, lastPos.lat] : home ? [home.lon, home.lat] : [-98.6, 39.8], zoom: lastPos ? 16 : home ? 12 : 3.5,
   });
   map.addControl(new maplibregl.AttributionControl({ compact: true }), "top-right");
-  map.on("styleimagemissing", (e) => { if (e.id === "plane" && !map.hasImage("plane")) map.addImage("plane", planeImage(), { sdf: true }); });
+  map.on("styleimagemissing", (e) => {
+    if (e.id === "plane" && !map.hasImage("plane")) map.addImage("plane", planeImage(), { sdf: true });
+    if (e.id === "ship" && !map.hasImage("ship")) map.addImage("ship", shipImage(), { sdf: true });
+  });
   map.on("dragstart", () => setFollow(false));
   map.on("rotatestart", (e) => { if (e.originalEvent) setFollow(false); });
   // a tap on a plane opens its details; a tap anywhere else closes them
   map.on("click", (e) => {
-    const hit = map.getLayer("planes") ? map.queryRenderedFeatures([[e.point.x - 14, e.point.y - 14], [e.point.x + 14, e.point.y + 14]], { layers: ["planes"] })[0] : null;
+    const box = [[e.point.x - 14, e.point.y - 14], [e.point.x + 14, e.point.y + 14]];
+    const hit = map.getLayer("planes") ? map.queryRenderedFeatures(box, { layers: ["planes"] })[0] : null;
     if (hit) return showPlane(hit.properties.icao);
+    const ship = map.getLayer("ships") ? map.queryRenderedFeatures(box, { layers: ["ships"] })[0] : null;
+    if (ship) return showShip(ship.properties.mmsi);
     $("#bright-pop").hidden = true;
     if (air.sel) showPlane(null);
+    if (ais.sel) showShip(null);
     // a tap on the map beside an open screen (Media, Weather, ...) puts it away: the map, full width
     if (currentView !== "home") { showView("home"); setPanel(true, false); }
   });
@@ -1940,6 +1956,8 @@ const freqText = (f, mode) => { const x = fmtFreq(f, mode); return `${x.v} ${x.u
 async function loadRadio(force) {
   if (radio.tab === "mesh") loadMesh();
   if (radio.tab === "air") pollAir();
+  if (radio.tab === "ships") pollShips();
+  if (radio.tab === "sdr") loadSdr();
   if (!force && Date.now() - radio.loaded < 120000) return renderRadio();
   try {
     radio.info = await api("/api/radio");
@@ -1984,7 +2002,11 @@ function renderRadio() {
   } else if (radio.tab === "mesh") {
     rows.push(...meshRows());
   } else if (radio.tab === "air") {
-    rows.push(...airRows());
+    rows.push(...airRows(), ...acarsRows());
+  } else if (radio.tab === "ships") {
+    rows.push(...shipRows());
+  } else if (radio.tab === "sdr") {
+    rows.push(...sdrRows());
   }
   box.replaceChildren(...rows);
 }
@@ -2573,6 +2595,7 @@ function renderVehicle(s) {
   renderObd(s.obd);
   if (!tripInfo || Date.now() - (renderVehicle.tripAt || 0) > 5000) { renderVehicle.tripAt = Date.now(); loadTrip(); }
   if (!fuelInfo || Date.now() - (renderVehicle.fuelAt || 0) > 60000) { renderVehicle.fuelAt = Date.now(); loadFuel(); }
+  if (!tpmsInfo || Date.now() - (renderVehicle.tpmsAt || 0) > 20000) { renderVehicle.tpmsAt = Date.now(); loadTpms(); }
   if (!driveInfo || Date.now() - (renderVehicle.drivesAt || 0) > 30000) { renderVehicle.drivesAt = Date.now(); loadDrives(); }
   drawCompass(p ? heading : null);
   const acc = ph.linear_accel;  // the phone's accelerometer, when one is connected
@@ -2953,6 +2976,183 @@ function paintRouteWeather() {
 setInterval(() => nav.active && routeWeather(), 15 * 60 * 1000);
 
 
+// ---- AIS (ais.py): ships and boats from their 162 MHz broadcasts, on the map and the Radio screen ----
+const ais = { data: null, timer: null, sel: null };
+function shipsWanted() { return terrain.ships || (currentView === "radio" && radio.tab === "ships"); }
+async function pollShips() {
+  clearTimeout(ais.timer);
+  if (!shipsWanted()) { if (map?.getSource("ships")) map.getSource("ships").setData(shipsGeojson(null)); return; }
+  ais.data = await api("/api/ais").catch(() => ais.data);
+  map?.getSource("ships")?.setData(shipsGeojson(ais.data));
+  if (currentView === "radio" && radio.tab === "ships") renderRadio();
+  if (ais.sel) paintShip();
+  ais.timer = setTimeout(pollShips, 10000);
+}
+function shipsGeojson(d) {
+  return { type: "FeatureCollection", features: (d?.ships || []).filter((v) => v.lat != null && v.pos_age < 1800).map((v) => ({
+    type: "Feature", geometry: { type: "Point", coordinates: [v.lon, v.lat] },
+    properties: { mmsi: v.mmsi, label: v.name || String(v.mmsi), dir: v.heading ?? v.cog ?? 0, moving: (v.sog ?? 0) > 0.5 ? 1 : 0 } })) };
+}
+function shipImage() {  // a hull pointing north, drawn once (SDF, so the layer colors it)
+  const c = document.createElement("canvas");
+  c.width = c.height = 48;
+  const g = c.getContext("2d");
+  g.fillStyle = "#fff";
+  g.beginPath();
+  g.moveTo(24, 3); g.lineTo(33, 14); g.lineTo(33, 40); g.lineTo(28, 45); g.lineTo(20, 45); g.lineTo(15, 40); g.lineTo(15, 14); g.closePath();
+  g.fill();
+  return g.getImageData(0, 0, 48, 48);
+}
+// The flag from the first three digits of the MMSI (maritime identification digits; the ones seen most around the US).
+const MID = { 338: "US", 366: "US", 367: "US", 368: "US", 369: "US", 316: "Canada", 303: "US (Alaska)", 351: "Panama", 352: "Panama", 353: "Panama",
+  354: "Panama", 355: "Panama", 356: "Panama", 357: "Panama", 370: "Panama", 371: "Panama", 372: "Panama", 373: "Panama", 374: "Panama",
+  636: "Liberia", 637: "Liberia", 538: "Marshall Islands", 477: "Hong Kong", 412: "China", 413: "China", 414: "China", 563: "Singapore",
+  564: "Singapore", 565: "Singapore", 566: "Singapore", 244: "Netherlands", 245: "Netherlands", 246: "Netherlands", 219: "Denmark",
+  257: "Norway", 258: "Norway", 259: "Norway", 273: "Russia", 235: "UK", 232: "UK", 233: "UK", 234: "UK", 255: "Portugal", 248: "Malta",
+  249: "Malta", 256: "Malta", 209: "Cyprus", 210: "Cyprus", 212: "Cyprus", 241: "Greece", 240: "Greece", 431: "Japan", 432: "Japan",
+  440: "Korea", 441: "Korea", 525: "Indonesia", 548: "Philippines", 567: "Thailand", 574: "Vietnam", 419: "India", 229: "Malta", 308: "Bahamas",
+  309: "Bahamas", 311: "Bahamas", 310: "Bermuda", 319: "Cayman Islands", 378: "British Virgin Islands", 304: "Antigua", 305: "Antigua", 215: "Malta", 236: "Gibraltar", 218: "Germany", 211: "Germany", 227: "France", 228: "France", 247: "Italy", 224: "Spain", 225: "Spain" };
+function shipInfo(v) {
+  const mph = settings.units === "imperial", kn = v.sog;
+  const rows = [];
+  if (v.status_text) rows.push(["Status", v.status_text]);
+  if (kn != null) rows.push(["Speed", mph ? `${(kn * 1.15078).toFixed(1)} mph · ${kn.toFixed(1)} kn` : `${(kn * 1.852).toFixed(1)} km/h · ${kn.toFixed(1)} kn`]);
+  if (v.cog != null) rows.push(["Course", `${Math.round(v.cog)}° ${cardinal(v.cog)}`]);
+  if (v.dest) rows.push(["Going to", v.dest]);
+  if (v.length) rows.push(["Size", mph ? `${Math.round(v.length * 3.281)} × ${Math.round((v.beam || 0) * 3.281)} ft` : `${v.length} × ${v.beam || "?"} m`]);
+  if (v.draught) rows.push(["Draft", mph ? `${(v.draught * 3.281).toFixed(1)} ft` : `${v.draught} m`]);
+  if (v.km != null && lastPos) {
+    const b = (Math.atan2(Math.sin((v.lon - lastPos.lon) * RAD) * Math.cos(v.lat * RAD),
+      Math.cos(lastPos.lat * RAD) * Math.sin(v.lat * RAD) - Math.sin(lastPos.lat * RAD) * Math.cos(v.lat * RAD) * Math.cos((v.lon - lastPos.lon) * RAD)) / RAD + 360) % 360;
+    rows.push(["From you", `${distText(v.km * 1000)} to the ${cardinal(b)}`]);
+  } else if (v.km != null) rows.push(["From you", distText(v.km * 1000)]);
+  rows.push(["Heard", v.age < 90 ? "just now" : agoText(v.seen)]);
+  return { title: v.name || `Vessel ${v.mmsi}`, sub: [v.type_text, MID[String(v.mmsi).slice(0, 3)], `MMSI ${v.mmsi}`, v.callsign].filter(Boolean).join(" · "), rows };
+}
+function showShip(mmsi) {
+  ais.sel = mmsi ? Number(mmsi) : null;
+  if (mmsi) air.sel = null;
+  paintPlane();
+  paintShip();
+}
+function paintShip() {
+  const box = $("#plane-card");
+  if (!ais.sel) { if (!air.sel) box.hidden = true; return; }
+  box.hidden = false;
+  box.classList.remove("alert");
+  const v = (ais.data?.ships || []).find((x) => x.mmsi === ais.sel);
+  if (!v) { box.innerHTML = `<div class="plane-head"><div><b>Vessel ${ais.sel}</b><span>No longer in the list</span></div><button class="icon-btn" data-action="plane-close" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>`; return; }
+  const i = shipInfo(v);
+  box.innerHTML = `<div class="plane-head"><div><b>${escapeHtml(i.title)}</b><span>${escapeHtml(i.sub)}</span></div>
+    <button class="icon-btn" data-action="plane-close" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+    <div class="plane-grid">${i.rows.map(([k, x]) => `<span>${k}</span><b>${escapeHtml(x)}</b>`).join("")}</div>`;
+}
+function shipRows() {
+  const d = ais.data, rows = [];
+  if (!d) { pollShips(); return [note("Listening for ships…")]; }
+  rows.push(head(`Ships · ${d.ships.length}`, terrain.ships ? "Hide on map" : "Show on map", () => toggleLayer("ships")));
+  rows.push(note("The SDR listens on 162 MHz for about a minute every five (Listening tab), so ships appear in bursts. Line of sight: a river or the coast, not through hills."));
+  for (const v of d.ships) {
+    const b = document.createElement("div");
+    b.className = "list-item media-row";
+    b.innerHTML = `<span class="thumb"><svg style="transform: rotate(${v.heading ?? v.cog ?? 0}deg)"><use href="#i-ship"/></svg></span><span class="txt"><span class="t"></span><span class="s"></span></span><span class="sat-el"></span>`;
+    b.querySelector(".t").textContent = v.name || `Vessel ${v.mmsi}`;
+    b.querySelector(".s").textContent = [v.type_text, v.sog != null ? `${(v.sog * (settings.units === "imperial" ? 1.15078 : 1.852)).toFixed(0)} ${settings.units === "imperial" ? "mph" : "km/h"}` : "", v.dest ? `to ${v.dest}` : "", v.status_text].filter(Boolean).join(" · ");
+    b.querySelector(".sat-el").textContent = v.lat == null ? "no position" : v.km != null ? distText(v.km * 1000) : "";
+    if (v.lat != null) b.onclick = () => { showView("home"); setFollow(false); map.easeTo({ center: [v.lon, v.lat], zoom: 12 }); if (!terrain.ships) toggleLayer("ships"); showShip(v.mmsi); };
+    rows.push(b);
+  }
+  if (!d.ships.length) rows.push(note("No ships heard yet."));
+  return rows;
+}
+
+// ---- ACARS (acars.py): aircraft text messages, in the Aircraft tab and on a tapped plane ----
+const acarsData = { msgs: null, at: 0 };
+async function loadAcars() {
+  if (Date.now() - acarsData.at < 15000) return;
+  acarsData.at = Date.now();
+  acarsData.msgs = (await api("/api/acars").catch(() => ({}))).messages || acarsData.msgs;
+  if (air.sel) paintPlane();
+  if (currentView === "radio" && radio.tab === "air") renderRadio();
+}
+// IATA airline codes in a flight number ("UA1234") against the callsigns ADS-B hears ("UAL1234")
+const IATA = { UA: "UAL", DL: "DAL", AA: "AAL", WN: "SWA", AS: "ASA", B6: "JBU", NK: "NKS", F9: "FFT", HA: "HAL", OO: "SKW", YX: "RPA", QX: "QXE",
+  FX: "FDX", "5X": "UPS", AC: "ACA", WS: "WJA", G4: "AAY", SY: "SCX", MX: "MXY", PD: "POE", QK: "JZA", EV: "ASQ", ZW: "AWI", "9E": "EDV", MQ: "ENY" };
+const flightCall = (f) => f ? (IATA[f.slice(0, 2)] || f.slice(0, 2)) + f.slice(2).replace(/^0+/, "") : "";
+function acarsFor(p) {
+  const call = (p.call || "").trim().replace(/^([A-Z]{3})0+/, "$1");
+  return (acarsData.msgs || []).filter((m) => m.flight && call && flightCall(m.flight) === call).slice(0, 3);
+}
+function acarsRows() {
+  const rows = [head(`Aircraft messages (ACARS) · ${acarsData.msgs?.length ?? 0}`)];
+  loadAcars();
+  if (!acarsData.msgs?.length) return [...rows, note("Nothing heard yet: the SDR listens on 131.5 MHz for a minute every few minutes (Listening tab).")];
+  for (const m of acarsData.msgs.slice(0, 30)) {
+    const b = document.createElement("div");
+    b.className = "list-item media-row acars-row";
+    b.innerHTML = `<span class="txt"><span class="t"></span><span class="s"></span></span><span class="sat-el"></span>`;
+    b.querySelector(".t").textContent = [m.flight, m.tail].filter(Boolean).join(" · ") || "Aircraft";
+    b.querySelector(".s").textContent = m.text.slice(0, 160) + (m.kind ? `  (${m.kind})` : "");
+    b.querySelector(".sat-el").textContent = agoText(m.t);
+    rows.push(b);
+  }
+  return rows;
+}
+
+// ---- the SDR's time slices (sdr.py) and emergency broadcasts from weather radio (nwr.py) ----
+let sdrInfo = null, nwrInfo = null;
+async function loadSdr() {
+  [sdrInfo, nwrInfo] = await Promise.all([api("/api/sdr").catch(() => sdrInfo), api("/api/nwr").catch(() => nwrInfo)]);
+  if (currentView === "radio" && radio.tab === "sdr") renderRadio();
+}
+const ALERT_LEVEL = { emergency: "bad", warning: "warn-t", watch: "warn-t", info: "", test: "" };
+function alertRow(a) {
+  const b = document.createElement("div");
+  b.className = "list-item media-row" + (a.active && a.level === "emergency" ? " playing" : "");
+  b.innerHTML = `<span class="txt"><span class="t"></span><span class="s"></span></span><span class="sat-el"></span>`;
+  b.querySelector(".t").textContent = a.event;
+  b.querySelector(".s").textContent = [a.origin, `${a.counties.length} count${a.counties.length === 1 ? "y" : "ies"}: ${a.counties.join(", ")}`,
+    a.minutes ? `${a.minutes >= 60 ? `${Math.round(a.minutes / 6) / 10} h` : `${a.minutes} min`}` : ""].filter(Boolean).join(" · ");
+  b.querySelector(".sat-el").textContent = a.active ? "in force" : agoText(a.issued);
+  return b;
+}
+function sdrRows() {
+  const rows = [];
+  if (!sdrInfo) { loadSdr(); return [note("Loading…")]; }
+  rows.push(head("Emergency broadcasts · weather radio"));
+  const alerts = nwrInfo?.alerts || [];
+  if (alerts.length) rows.push(...alerts.slice(0, 12).map(alertRow));
+  else rows.push(note("None heard. Alerts of every kind (weather, tsunami, civil emergency, AMBER...) come over NOAA Weather Radio with no internet needed."));
+  rows.push(head("The SDR's time"), note("ADS-B (aircraft) has the radio whenever nothing else needs it. These listen for a short while on a timer and give it back. A satellite pass or a station you tune always comes first."));
+  for (const s of sdrInfo.slices) {
+    const state = s.missing.length ? `not installed: ${s.missing.join(", ")}` : !s.enabled ? "off" : sdrInfo.running === s.name ? "listening now"
+      : s.listens ? `${s.lines} line${s.lines === 1 ? "" : "s"} last time · every ${Math.round(s.every / 60)} min` : "waiting its turn";
+    const b = meshToggleLike(s.label, `${s.detail} · ${state}${s.error ? ` · ${s.error}` : ""}`, s.enabled && !s.missing.length,
+      async () => { sdrInfo = await api("/api/sdr", { json: { name: s.name, enabled: !s.enabled } }).catch(() => sdrInfo); renderRadio(); });
+    rows.push(b);
+  }
+  return rows;
+}
+// A new alert is said and shown once (the heard-already list is kept); tests are ignored.
+const nwrSeen = new Set(load("nwrSeen", []));
+async function pollNwr() {
+  const d = await api("/api/nwr").catch(() => null);
+  if (!d) return;
+  nwrInfo = d;
+  const fresh = d.alerts.filter((a) => a.active && !nwrSeen.has(a.key) && a.level !== "test" && a.level !== "info");
+  for (const a of fresh) nwrSeen.add(a.key);
+  if (fresh.length) {
+    save("nwrSeen", [...nwrSeen].slice(-60));
+    const a = fresh.find((x) => x.level === "emergency") || fresh[0];
+    const banner = $("#nwr-banner");
+    banner.innerHTML = `<b>${escapeHtml(a.event)}</b><span>${escapeHtml(a.origin)}${a.counties.length ? ` · ${a.counties.join(", ")}` : ""}${fresh.length > 1 ? ` · and ${fresh.length - 1} more (Radio → Listening)` : ""}</span><button class="btn" data-action="nwr-dismiss">Dismiss</button>`;
+    banner.hidden = false;
+    say(`${a.level === "emergency" ? "Emergency broadcast. " : "Alert. "}${a.event}, from ${a.origin}.`);
+  }
+}
+setInterval(pollNwr, 30000);
+setTimeout(pollNwr, 6000);
+
 // ---- ADS-B (adsb.py): aircraft from their 1090 MHz broadcasts, on the map and the Radio screen ----
 const air = { data: null, timer: null, sel: null };
 function airWanted() { return terrain.aircraft || (currentView === "radio" && radio.tab === "air"); }
@@ -2993,18 +3193,22 @@ function planeInfo(p) {  // [label, value] pairs for what's known about an aircr
     rows.push(["From you", `${distText(p.km * 1000)} to the ${cardinal(b)}`]);
   } else if (p.km != null) rows.push(["From you", distText(p.km * 1000)]);
   if (p.squawk) rows.push(["Squawk", `${p.squawk}${SQUAWKS[p.squawk] ? ` · ${SQUAWKS[p.squawk]}` : ""}`]);
+  for (const m of acarsFor(p).slice(0, 2)) rows.push([m.kind || "Message", `${m.text.slice(0, 110)} (${agoText(m.t)})`]);
   rows.push(["Heard", p.age < 2 ? "just now" : `${Math.round(p.age)} s ago`]);
   return { title: call ? call.replace(/^([A-Z]{3})(\d)/, "$1 $2") : `Aircraft ${p.icao}`, sub: [air_, `ICAO ${p.icao}`].filter(Boolean).join(" · "),
     rows, alert: p.emergency || /^7(500|600|700)$/.test(p.squawk || "") };
 }
 function showPlane(icao) {
   air.sel = icao;
+  if (icao) ais.sel = null;
   paintPlane();
+  paintShip();
+  if (icao) loadAcars();
 }
 function paintPlane() {
   const box = $("#plane-card"), p = air.sel && (air.data?.aircraft || []).find((x) => x.icao === air.sel);
-  box.hidden = !air.sel;
-  if (!air.sel) return;
+  if (!air.sel) { if (!ais.sel) box.hidden = true; return; }
+  box.hidden = false;
   if (!p) {  // gone from the list: out of range for a minute
     box.innerHTML = `<div class="plane-head"><div><b>Aircraft ${escapeHtml(air.sel)}</b><span>No longer heard</span></div><button class="icon-btn" data-action="plane-close" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>`;
     return;
@@ -3084,6 +3288,49 @@ async function airSay() {
   return msg;
 }
 
+
+// ---- tire pressure (tpms.py): the truck's own sensors, heard by the SDR while it moves ----
+let tpmsInfo = null;
+async function loadTpms() {
+  tpmsInfo = await api("/api/tpms").catch(() => tpmsInfo);
+  renderTpms();
+  const low = tpmsInfo?.alerts || [];
+  if (low.length && !loadTpms.said?.has(low.join())) {
+    (loadTpms.said ||= new Set()).add(low.join());
+    say(`Low tire pressure: ${low.map((a) => a.replace("FL", "front left").replace("FR", "front right").replace("RL", "rear left").replace("RR", "rear right")).join(", ")}`);
+    toast(`Low tire pressure: ${low.join(", ")}`, 6000);
+  }
+}
+setInterval(loadTpms, 60000);
+setTimeout(loadTpms, 8000);
+const WHEEL_NAME = { FL: "Front left", FR: "Front right", RL: "Rear left", RR: "Rear right" };
+function renderTpms() {
+  const box = $("#tpms-kv"), t = tpmsInfo;
+  if (!box || !t) return;
+  const imperial = settings.units === "imperial", temp = (c) => c == null ? "" : imperial ? ` · ${Math.round(c * 9 / 5 + 32)}°F` : ` · ${Math.round(c)}°C`;
+  const tile = (w) => {
+    const x = t.tires[w];
+    return `<div class="tire ${x ? (x.low ? "low" : "ok") : ""}"><small>${WHEEL_NAME[w]}</small><b>${x ? (imperial ? `${x.psi.toFixed(0)}<i> psi</i>` : `${(x.psi * 6.894757).toFixed(0)}<i> kPa</i>`) : "--"}</b><small>${x ? `${agoText(Date.now() / 1000 - x.age).replace("just now", "now")}${temp(x.temp_c)}` : "not assigned"}</small></div>`;
+  };
+  const rows = [`<div class="tires">${["FL", "FR", "RL", "RR"].map(tile).join("")}</div>`];
+  const free = t.sensors.filter((s) => !s.wheel);
+  if (!t.sensors.length) rows.push(`<div class="fuel-note">No tire sensors heard yet. They only transmit while the truck is moving, and the SDR listens for a minute or so every few minutes (Radio → Listening).</div>`);
+  else if (free.length) {
+    rows.push(`<div class="fuel-note">Heard ${t.sensors.length} sensor${t.sensors.length === 1 ? "" : "s"}. The ones that keep turning up while you drive are yours (marked ★): tap a wheel for each.</div>`);
+    for (const s of free.slice(0, 8)) {
+      rows.push(`<div class="tpms-sensor"><span>${s.probably_yours ? "★ " : ""}${escapeHtml(s.model)} ${escapeHtml(s.id)}<small> · ${(imperial ? s.psi.toFixed(0) + " psi" : (s.psi * 6.894757).toFixed(0) + " kPa")} · heard ${s.heard}×</small></span>
+        <span class="wheels">${t.wheels.map((w) => `<button class="btn" data-action="tpms-assign" data-key="${escapeHtml(s.key)}" data-wheel="${w}">${w}</button>`).join("")}<button class="btn" data-action="tpms-forget" data-key="${escapeHtml(s.key)}" aria-label="Forget">✕</button></span></div>`);
+    }
+  }
+  box.innerHTML = rows.join("");
+}
+function tireSay() {
+  const t = tpmsInfo?.tires || {}, ws = Object.keys(t);
+  const msg = !ws.length ? "I haven't heard your tire sensors yet: they only talk while the truck is moving"
+    : ["FL", "FR", "RL", "RR"].filter((w) => t[w]).map((w) => `${WHEEL_NAME[w].toLowerCase()} ${Math.round(t[w].psi)}`).join(", ") + " p s i";
+  say(msg);
+  return msg;
+}
 
 // ---- fuel: weekly average prices (EIA), fill-ups, and what you paid at each station (fuel.py) ----
 let fuelInfo = null;
@@ -3870,6 +4117,19 @@ async function runCommand(raw, fromModel = false) {
   if (/^(?:full|max(?:imum)?) brightness$|^brightest$/.test(text)) { setBrightness(100); return "Brightness 100"; }
   if (/^(?:dim|darken) the (?:screen|display)$|^(?:screen |display )?(?:dimmer|darker)$|^(?:turn )?brightness down$/.test(text)) { setBrightness((bright?.level ?? 100) - 20); return "Dimmer"; }
   if (/^(?:brighten|brighter)(?: the (?:screen|display))?$|^(?:screen |display )?brighter$|^(?:turn )?brightness up$/.test(text)) { setBrightness((bright?.level ?? 100) + 20); return "Brighter"; }
+  if (/tire pressure|tyre pressure|how are my tires|my tires/.test(text)) { loadTpms(); return tireSay(); }
+  if (/(any |what )?(emergency|alerts?|broadcasts?)( broadcasts?| alerts?)?( (right now|out there|on the radio|today))?\??$|weather radio alerts?|is there an alert/.test(text) && /alert|broadcast|emergency/.test(text)) {
+    const act = (nwrInfo?.alerts || []).filter((a) => a.active && a.level !== "test");
+    const msg = act.length ? act.slice(0, 3).map((a) => `${a.event} from ${a.origin}`).join(". ") : "No emergency broadcasts heard";
+    say(msg);
+    return msg;
+  }
+  if (/(any |what )?(ships|boats|vessels)( nearby| around| on the river| close)?\??$/.test(text)) {
+    const v = (ais.data?.ships || []).find((x) => x.km != null);
+    const msg = v ? `${v.name || "A vessel"}, ${distText(v.km * 1000).replace("mi", "miles").replace("km", "kilometers")} away${v.dest ? `, bound for ${v.dest}` : ""}` : "I haven't heard any ships";
+    say(msg);
+    return msg;
+  }
   if (/(volume up|louder|turn it up)/.test(text)) { nudgeVolume(10); return "Volume up"; }
   if (/(volume down|quieter|turn it down)/.test(text)) { nudgeVolume(-10); return "Volume down"; }
   if (/(how fast|my speed|what speed)/.test(text)) {
@@ -4051,7 +4311,10 @@ const ACTIONS = {
   "bright-down": () => setBrightness((bright?.level ?? 100) - 10),
   "bright-up": () => setBrightness((bright?.level ?? 100) + 10),
   "bright-auto": () => loadBrightness({ auto: !bright?.auto }),
-  "plane-close": () => showPlane(null),
+  "plane-close": () => { showPlane(null); showShip(null); },
+  "tpms-assign": async (btn) => { tpmsInfo = await api("/api/tpms/assign", { json: { key: btn.dataset.key, wheel: btn.dataset.wheel } }).catch((e) => (toast(e.message), tpmsInfo)); renderTpms(); },
+  "tpms-forget": async (btn) => { tpmsInfo = await api("/api/tpms/forget", { json: { key: btn.dataset.key } }).catch(() => tpmsInfo); renderTpms(); },
+  "nwr-dismiss": () => { $("#nwr-banner").hidden = true; },
   "fuel-stops": () => findAhead("gas"),
   "set-home": () => nav.dest && setHome(nav.dest),
   "home-here": () => (lastPos ? setHome({ name: "Home", lat: lastPos.lat, lon: lastPos.lon, address: "" }) : toast("No GPS fix yet")),

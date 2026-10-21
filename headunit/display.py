@@ -54,7 +54,7 @@ def _ddc_get():
 
 
 def _ddc_set(pct):
-    r = _run("ddcutil", "setvcp", "10", str(pct), "--noverify", timeout=20)
+    r = _run("ddcutil", "setvcp", "10", str(pct), timeout=20)
     if r.returncode:
         raise OSError((r.stderr or r.stdout).strip()[:200] or "ddcutil failed")
 

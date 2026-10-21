@@ -18,6 +18,7 @@ import threading
 import time
 
 import radio
+import sdr
 
 CHARS = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ##### ###############0123456789######"
 NZ = 15
@@ -221,7 +222,7 @@ def set_always(on):
 
 
 def _busy():
-    return radio.tuner.tuned or radio.capture.busy() or time.time() < radio.SDR_HOLD[0]
+    return radio.tuner.tuned or radio.capture.busy() or time.time() < radio.SDR_HOLD[0] or sdr.busy()
 
 
 def adsb_loop(where):

@@ -13,6 +13,7 @@ Pi itself and keep working with no signal; it goes online only for what it doesn
 | **Everyday** | Voice timers and reminders, a guide to every voice command ("Truck, help"), Settings → System with a one-tap health check |
 | **Media** | A 25,000-track library (artists, albums, songs, search, album art), browse by mood, style, genre and decade (Plex's tags), mixes from a described vibe ("chill night drive", "something like Blink-182"; the voice model picks the tags), playlists, spectrum visualizers, full-screen now playing, video; `tools/plex_music.py` copies a Plex library and converts lossless to Opus |
 | **Radio (SDR)** | FM/AM with band scan, NOAA weather radio, an EMS/fire/marine/air/ham scanner, satellite pass predictions with Doppler-corrected tuning, and automatic capture: Meteor-M2 weather images (SatDump) and ISS SSTV pictures |
+| **SDR time-sharing** | One dongle, used whenever possible: ADS-B aircraft fill the time, satellite passes and your radio always come first, and short listens come around on a timer for ships (AIS, on the map and a list), your tire pressures (TPMS, Vehicle screen, spoken when low), aircraft text messages (ACARS) and emergency broadcasts from weather radio: every alert type, tsunami, civil emergency and AMBER included, with no internet; turn each on or off in Radio → Listening |
 | **LoRa mesh** | A Meshtastic radio (USB or Wi-Fi) for off-grid texts with no cell signal: messages read aloud, quick replies, send your location, direct messages, nodes heard with distance and signal, nodes on the map, opt-in position sharing; "Truck, tell the mesh I'm on my way" |
 | **Aircraft (ADS-B)** | Planes overhead from their 1090 MHz broadcasts with the same SDR (rtl_adsb, decoded here): on the map with heading, callsign, altitude and trail, a list by distance, tap one for its details (airline, altitude, speed, distance), emergency squawks in red; "Truck, what plane is that?" |
 | **Weather** | NWS forecast and alerts, an hourly temperature and rain chart, GOES satellite pictures and animations, radar on the map, alerts and arrival weather along your route; cached for when you're offline; "Truck, will it rain?" |
@@ -98,6 +99,9 @@ connection. `HEADUNIT_OFFLINE=1` turns the fallbacks off, to check the offline d
 | `FUEL_TANK_GAL` | your tank in US gallons; with the OBD fuel gauge it gives the range, and routes then warn when you won't make it |
 | `FUEL_RESERVE_PCT` | the part of the tank counted as reserve in that range; default 10 |
 | `BT_AUDIO` | a Bluetooth amp or speaker's address (`bluetoothctl devices`): `btaudio.service` keeps it connected and the default output; empty = the Pi's own audio |
+| `TPMS_FREQ`, `TPMS_LOW_PSI` | the tire sensors' frequency (`315M` US, `433.92M` Europe) and the pressure under which a tire counts as low (default 28 psi) |
+| `NWR_FREQ` | one weather radio frequency for the emergency-broadcast listener, instead of scanning all seven (`162.55M`) |
+| `BRIGHTNESS` | `auto`, `backlight`, `ddc` (HDMI monitors, needs ddcutil) or `software` |
 | `NEWS_FEEDS` | the starting feed list, `Name|url, Name|url` (after that, edit it on the News screen) |
 
 Everything else is in the Settings screen: units, theme, accent color, voice, visualizer, home, Wi-Fi networks,
