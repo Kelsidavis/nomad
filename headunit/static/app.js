@@ -1362,7 +1362,7 @@ function nudgeVolume(delta) {
 
 // ---- visualizer: a Web Audio analyser on the player, drawn at 30 fps while music plays and it's on screen ----
 // Style and color are settings (viz, vizColor); the button on the album art cycles the style.
-const VIZ = { bars: "Bars", mirror: "Mirror", wave: "Wave", scope: "Scope", ring: "Ring", off: "Off" };
+const VIZ = { bars: "Bars", mirror: "Mirror", wave: "Wave", scope: "Scope", ring: "Ring", auto: "Rotate", off: "Off" };
 let viz = null;
 function startVisualizer() {
   if (settings.viz === "off") return;
@@ -1373,7 +1373,7 @@ function startVisualizer() {
       an.fftSize = 2048;
       an.smoothingTimeConstant = 0.78;
       ctx.createMediaElementSource(audio).connect(an).connect(ctx.destination);
-      viz = { ctx, an, bins: new Uint8Array(an.frequencyBinCount), wave: new Uint8Array(an.fftSize), peaks: [], last: 0, running: false };
+      viz = { ctx, an, bins: new Uint8Array(an.frequencyBinCount), wave: new Uint8Array(an.fftSize), peaks: [], last: 0, running: false, rot: { i: 0, since: 0, fade: null } };
     } catch (e) {
       return console.warn("visualizer off:", e);
     }
@@ -1410,6 +1410,84 @@ function vizColor(b, N) {
   if (settings.vizColor === "album" && media.albumColor) return media.albumColor;
   return getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
 }
+// "Rotate" steps through the styles, cross-fading each into the next (both drawn at once, one fading out, one in).
+const VIZ_ROTATION = ["bars", "wave", "ring", "mirror", "scope"], VIZ_DWELL = 20000, VIZ_FADE = 1600;
+function rotation(now) {  // { a: style showing, b: style fading in or null, p: 0..1 through the fade }
+  const r = viz.rot;
+  if (!r.since) r.since = now;
+  if (r.fade === null && now - r.since > VIZ_DWELL) r.fade = now;
+  let p = 0;
+  if (r.fade !== null) {
+    p = (now - r.fade) / VIZ_FADE;
+    if (p >= 1) { r.i = (r.i + 1) % VIZ_ROTATION.length; r.since = now; r.fade = null; p = 0; }
+  }
+  const b = r.fade !== null ? VIZ_ROTATION[(r.i + 1) % VIZ_ROTATION.length] : null;
+  return { a: VIZ_ROTATION[r.i], b, p: p * p * (3 - 2 * p) };  // ease in and out
+}
+function drawBars(g, w, h, level, A, mirror) {
+  const N = level.length, bw = w / N;
+  for (let b = 0; b < N; b++) {
+    g.fillStyle = vizColor(b, N);
+    const bh = Math.max(2, level[b] * h * (mirror ? 0.5 : 1)), x = b * bw + bw * 0.18;
+    g.globalAlpha = 0.85 * A;
+    if (!mirror) g.fillRect(x, h - bh, bw * 0.64, bh);
+    else g.fillRect(x, h / 2 - bh, bw * 0.64, bh * 2);
+    if (!mirror) { g.globalAlpha = 0.5 * A; g.fillRect(x, h - viz.peaks[b] * h - 3, bw * 0.64, 2); }
+  }
+}
+function drawWave(g, w, h, level, A) {
+  const N = level.length;
+  const pts = level.map((v, b) => [(b / (N - 1)) * w, h - Math.max(0.02, v) * h * 0.95]);
+  g.beginPath();
+  g.moveTo(0, h);
+  g.lineTo(...pts[0]);
+  for (let i = 1; i < pts.length; i++) {  // smooth: curve through the midpoints
+    const mx = (pts[i - 1][0] + pts[i][0]) / 2, my = (pts[i - 1][1] + pts[i][1]) / 2;
+    g.quadraticCurveTo(pts[i - 1][0], pts[i - 1][1], mx, my);
+  }
+  g.lineTo(w, pts[pts.length - 1][1]);
+  g.lineTo(w, h);
+  g.closePath();
+  const grad = g.createLinearGradient(0, 0, w, 0);
+  for (let b = 0; b < N; b += 5) grad.addColorStop(b / N, vizColor(b, N));
+  g.fillStyle = grad;
+  g.globalAlpha = 0.55 * A;
+  g.fill();
+  g.globalAlpha = A;
+  g.strokeStyle = grad;
+  g.lineWidth = 2 * devicePixelRatio;
+  g.stroke();
+}
+function drawScope(g, w, h, level, A) {
+  g.beginPath();
+  const n = viz.wave.length;
+  for (let i = 0; i < n; i += 4) {
+    const x = (i / n) * w, y = h / 2 + ((viz.wave[i] - 128) / 128) * h * 0.42;
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.globalAlpha = A;
+  g.strokeStyle = vizColor(level.length / 2, level.length);
+  g.lineWidth = 2.5 * devicePixelRatio;
+  g.shadowColor = g.strokeStyle;
+  g.shadowBlur = 8 * devicePixelRatio;
+  g.stroke();
+  g.shadowBlur = 0;
+}
+function drawRing(g, w, h, level, A) {
+  const N = level.length, cx = w / 2, cy = h / 2, r0 = Math.min(w, h) * 0.3, len = Math.min(w, h) * 0.18;
+  g.lineWidth = Math.max(2, ((2 * Math.PI * r0) / (N * 2)) * 0.55);
+  g.lineCap = "round";
+  for (let i = 0; i < N * 2; i++) {  // mirrored left and right, lows at the top
+    const b = i < N ? i : 2 * N - 1 - i, a = (i / (N * 2)) * 2 * Math.PI - Math.PI / 2;
+    const r1 = r0 + Math.max(0.03, level[b]) * len;
+    g.strokeStyle = vizColor(b, N);
+    g.globalAlpha = 0.9 * A;
+    g.beginPath();
+    g.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
+    g.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+    g.stroke();
+  }
+}
 function drawViz(now) {
   if (audio.paused || settings.viz === "off") { viz.running = false; clearViz(); return; }
   // Keep running while music plays even with no visualizer on screen (Settings, say), so one shows up again as soon
@@ -1418,76 +1496,36 @@ function drawViz(now) {
   const canvases = $$("canvas.viz").filter((c) => c.offsetParent);
   if (!canvases.length || now - viz.last < 33) return;
   viz.last = now;
-  const N = 36;
-  const level = bands(N);
+  const level = bands(36);
   viz.an.getByteTimeDomainData(viz.wave);
+  const rot = settings.viz === "auto" ? rotation(now) : null;
   for (const c of canvases) {
+    const wide = c.classList.contains("wide");
     // the strips on the home card and over the map are too flat for a ring: bars there
-    const style = settings.viz === "ring" && c.classList.contains("wide") ? "bars" : settings.viz;
-    c.dataset.style = style;  // ring and scope use the whole art (style.css)
-    c.parentElement.dataset.viz = style;
+    const flat = (s) => (s === "ring" && wide ? "bars" : s);
+    // Rotate: the canvas fills the art in every style and the bar styles use its bottom part, so nothing jumps
+    // while two styles cross-fade; the album art around it (now playing) changes shape halfway through.
+    const shown = rot ? (rot.b ? [[rot.a, 1 - rot.p], [rot.b, rot.p]] : [[rot.a, 1]]) : [[settings.viz, 1]];
+    const lead = rot ? (rot.b && rot.p > 0.5 ? rot.b : rot.a) : settings.viz;
+    c.dataset.style = rot ? "auto" : flat(settings.viz);  // the box each style needs (style.css)
+    c.parentElement.dataset.viz = flat(lead);
     const w = (c.width = c.clientWidth * devicePixelRatio), h = (c.height = c.clientHeight * devicePixelRatio);
     const g = c.getContext("2d");
     g.clearRect(0, 0, w, h);
-    if (style === "bars" || style === "mirror") {
-      const bw = w / N;
-      for (let b = 0; b < N; b++) {
-        g.fillStyle = vizColor(b, N);
-        const bh = Math.max(2, level[b] * h * (style === "mirror" ? 0.5 : 1)), x = b * bw + bw * 0.18;
-        g.globalAlpha = 0.85;
-        if (style === "bars") g.fillRect(x, h - bh, bw * 0.64, bh);
-        else g.fillRect(x, h / 2 - bh, bw * 0.64, bh * 2);
-        if (style === "bars") { g.globalAlpha = 0.5; g.fillRect(x, h - viz.peaks[b] * h - 3, bw * 0.64, 2); }
-      }
-    } else if (style === "wave") {
-      const pts = level.map((v, b) => [(b / (N - 1)) * w, h - Math.max(0.02, v) * h * 0.95]);
-      g.beginPath();
-      g.moveTo(0, h);
-      g.lineTo(...pts[0]);
-      for (let i = 1; i < pts.length; i++) {  // smooth: curve through the midpoints
-        const mx = (pts[i - 1][0] + pts[i][0]) / 2, my = (pts[i - 1][1] + pts[i][1]) / 2;
-        g.quadraticCurveTo(pts[i - 1][0], pts[i - 1][1], mx, my);
-      }
-      g.lineTo(w, pts[pts.length - 1][1]);
-      g.lineTo(w, h);
-      g.closePath();
-      const grad = g.createLinearGradient(0, 0, w, 0);
-      for (let b = 0; b < N; b += 5) grad.addColorStop(b / N, vizColor(b, N));
-      g.fillStyle = grad;
-      g.globalAlpha = 0.55;
-      g.fill();
-      g.globalAlpha = 1;
-      g.strokeStyle = grad;
-      g.lineWidth = 2 * devicePixelRatio;
-      g.stroke();
-    } else if (style === "scope") {
-      g.beginPath();
-      const n = viz.wave.length;
-      for (let i = 0; i < n; i += 4) {
-        const x = (i / n) * w, y = h / 2 + ((viz.wave[i] - 128) / 128) * h * 0.42;
-        i ? g.lineTo(x, y) : g.moveTo(x, y);
-      }
-      g.strokeStyle = vizColor(N / 2, N);
-      g.lineWidth = 2.5 * devicePixelRatio;
-      g.shadowColor = g.strokeStyle;
-      g.shadowBlur = 8 * devicePixelRatio;
-      g.stroke();
-    } else if (style === "ring") {
-      const cx = w / 2, cy = h / 2, r0 = Math.min(w, h) * 0.3, len = Math.min(w, h) * 0.18;
-      g.lineWidth = Math.max(2, ((2 * Math.PI * r0) / (N * 2)) * 0.55);
-      g.lineCap = "round";
-      for (let i = 0; i < N * 2; i++) {  // mirrored left and right, lows at the top
-        const b = i < N ? i : 2 * N - 1 - i, a = (i / (N * 2)) * 2 * Math.PI - Math.PI / 2;
-        const r1 = r0 + Math.max(0.03, level[b]) * len;
-        g.strokeStyle = vizColor(b, N);
-        g.globalAlpha = 0.9;
-        g.beginPath();
-        g.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0);
-        g.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
-        g.stroke();
-      }
+    for (const [s, A] of shown) {
+      const style = flat(s);
+      g.save();
+      if (rot && !wide && (style === "bars" || style === "wave")) { g.translate(0, h * 0.58); drawStyle(g, style, w, h * 0.42, level, A); }
+      else drawStyle(g, style, w, h, level, A);
+      g.restore();
     }
   }
+}
+function drawStyle(g, style, w, h, level, A) {
+  if (style === "bars" || style === "mirror") drawBars(g, w, h, level, A, style === "mirror");
+  else if (style === "wave") drawWave(g, w, h, level, A);
+  else if (style === "scope") drawScope(g, w, h, level, A);
+  else if (style === "ring") drawRing(g, w, h, level, A);
 }
 // The cover's most vivid color, for the "Album" visualizer color.
 function pickAlbumColor(url) {

@@ -333,9 +333,9 @@ body[data-view="emergency"] #app { grid-template-columns: 5.2rem minmax(0, 45vw)
 }
 
 /* visualizer styles: ring and scope use the whole art */
-canvas.viz[data-style="ring"], canvas.viz[data-style="scope"], canvas.viz[data-style="mirror"] { top: 0; height: 100%; }
+canvas.viz[data-style="ring"], canvas.viz[data-style="scope"], canvas.viz[data-style="mirror"], canvas.viz[data-style="auto"] { top: 0; height: 100%; }
 .player-art.has-art canvas.viz[data-style="ring"] { background: radial-gradient(transparent 28%, rgb(0 0 0 / 0.5)); }
-.player-art.has-art canvas.viz[data-style="scope"], .player-art.has-art canvas.viz[data-style="mirror"] { background: rgb(0 0 0 / 0.38); }
+.player-art.has-art canvas.viz[data-style="scope"], .player-art.has-art canvas.viz[data-style="mirror"], .player-art.has-art canvas.viz[data-style="auto"] { background: rgb(0 0 0 / 0.38); }
 .viz-btn { position: absolute; top: 0.5rem; right: 0.5rem; width: 2.4rem; height: 2.4rem; border-radius: 50%; display: grid;
   place-items: center; background: rgb(0 0 0 / 0.4); color: #fff; z-index: 1; }
 .viz-btn svg { width: 1.2rem; height: 1.2rem; }
@@ -384,9 +384,9 @@ body.panel-hidden .map-chip { left: 3rem; }
 .np-backdrop { position: absolute; inset: -10%; background: var(--card-2) center / cover; filter: blur(40px) brightness(0.35) saturate(1.4); }
 .np-stage { position: relative; width: min(88vh, 48vw); aspect-ratio: 1; display: grid; place-items: center; }
 .np-stage canvas.viz { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 42%; }
-.np-stage canvas.viz[data-style="ring"], .np-stage canvas.viz[data-style="scope"], .np-stage canvas.viz[data-style="mirror"] { top: 0; height: 100%; background: none; }
+.np-stage canvas.viz[data-style="ring"], .np-stage canvas.viz[data-style="scope"], .np-stage canvas.viz[data-style="mirror"], .np-stage canvas.viz[data-style="auto"] { top: 0; height: 100%; background: none; }
 .np-art { position: relative; width: 62%; aspect-ratio: 1; border-radius: 1rem; background: var(--card-2) center / cover;
-  display: grid; place-items: center; color: var(--text-2); box-shadow: 0 1rem 3rem rgb(0 0 0 / 0.6); transition: border-radius 0.3s; }
+  display: grid; place-items: center; color: var(--text-2); box-shadow: 0 1rem 3rem rgb(0 0 0 / 0.6); transition: border-radius 0.8s, width 0.8s, margin 0.8s; }
 .np-art .ph { width: 35%; height: 35%; }
 .np-stage[data-viz="ring"] .np-art { border-radius: 50%; width: 58%; }
 .np-stage[data-viz="bars"] .np-art, .np-stage[data-viz="wave"] .np-art { margin-bottom: 18%; }
@@ -413,7 +413,7 @@ body.panel-hidden .map-chip { left: 3rem; }
 .media-card > :not(canvas):not(.fold-btn) { position: relative; z-index: 1; }
 .media-card .art { width: 4.6rem; height: 4.6rem; }
 canvas.viz.wide { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 55%; opacity: 0.38; pointer-events: none; }
-canvas.viz.wide[data-style="mirror"], canvas.viz.wide[data-style="scope"] { top: auto; height: 70%; }
+canvas.viz.wide[data-style="mirror"], canvas.viz.wide[data-style="scope"], canvas.viz.wide[data-style="auto"] { top: auto; height: 70%; }
 .media-card.folded canvas.viz.wide { height: 100%; opacity: 0.25; }
 
 /* now playing over the map, while the panel is hidden */
