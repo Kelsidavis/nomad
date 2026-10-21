@@ -22,6 +22,7 @@ _lock = threading.Lock()
 _planes = {}  # icao -> state
 _st = {"proc": None, "wanted_until": 0.0, "always": False, "frames": 0, "good": 0, "started": None, "error": None}
 _ref = {"pos": None}  # (lat, lon) to decode positions against
+_ctl = threading.Lock()  # starting and stopping rtl_adsb, so a satellite capture can never find it half-started
 
 
 # ---- decoding (Mode S extended squitter, DF17/18) ----
@@ -176,6 +177,11 @@ def _start():
 
 def stop():
     """Let go of the SDR (the radio wants it)."""
+    with _ctl:
+        _stop()
+
+
+def _stop():
     p = _st["proc"]
     if p:
         p.terminate()
@@ -195,17 +201,24 @@ def set_always(on):
     _st["always"] = bool(on)
 
 
+def _busy():
+    return radio.tuner.tuned or radio.capture.busy() or time.time() < radio.SDR_HOLD[0]
+
+
 def adsb_loop(where):
-    """where() -> (lat, lon) of the truck, the reference for positions."""
-    radio.SDR_USERS.append(stop)  # the tuner and satellite captures call this before taking the SDR
+    """where() -> (lat, lon) of the truck, the reference for positions. ADS-B is the lowest priority on the SDR: the
+    tuner and above all a satellite capture take it whenever they want it (they call stop() first), and ADS-B only
+    comes back once they're done. The busy check is made again under the lock that starts it, so a capture that
+    begins just as this loop decides to start can't end up sharing the dongle with rtl_adsb."""
+    radio.SDR_USERS.append(stop)
     while True:
         _ref["pos"] = where() or _ref["pos"]
-        busy = radio.tuner.tuned or radio.capture.busy() or time.time() < radio.SDR_HOLD[0]
         wanted = _st["always"] or time.time() < _st["wanted_until"]
-        if wanted and not busy:
-            _start()
-        elif _st["proc"]:
-            stop()
+        with _ctl:
+            if wanted and not _busy():
+                _start()
+            elif _st["proc"] and (not wanted or _busy()):
+                _stop()
         with _lock:
             for k in [k for k, p in _planes.items() if time.time() - p["seen"] > KEEP_S * 5]:
                 del _planes[k]

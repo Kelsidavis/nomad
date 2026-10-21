@@ -101,7 +101,12 @@ class Tuner:
 
     def start(self, freqs, mode, squelch=0, label=""):
         """Tune and return (generation, mp3 stream). More than one frequency scans them (needs squelch).
-        Listening wins over an automatic satellite capture: one running is stopped."""
+        Listening wins over an automatic satellite capture, one running is stopped, unless capturing is set to
+        Always: then a pass being recorded keeps the dongle until it's over."""
+        st = capture.state
+        if st["state"] == "capturing" and radio_settings()["auto"] == "always":
+            raise OSError(f"Recording {st['pass']['name']} until {time.strftime('%H:%M', time.localtime(st['pass']['los']))}: "
+                          "the radio is back after the pass (Radio → Capture passes: When free lets listening win)")
         capture.abort()
         if mode not in MODES:
             raise ValueError(f"mode must be one of {', '.join(MODES)}")
