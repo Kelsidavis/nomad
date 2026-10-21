@@ -411,6 +411,11 @@ async function initMap() {
   map.on("styleimagemissing", (e) => { if (e.id === "plane" && !map.hasImage("plane")) map.addImage("plane", planeImage(), { sdf: true }); });
   map.on("dragstart", () => setFollow(false));
   map.on("rotatestart", (e) => { if (e.originalEvent) setFollow(false); });
+  // a tap on a plane opens its details; a tap anywhere else closes them
+  map.on("click", (e) => {
+    const hit = map.getLayer("planes") ? map.queryRenderedFeatures([[e.point.x - 14, e.point.y - 14], [e.point.x + 14, e.point.y + 14]], { layers: ["planes"] })[0] : null;
+    if (hit) showPlane(hit.properties.icao); else if (air.sel) showPlane(null);
+  });
   map.on("contextmenu", (e) => previewRoute({ name: "Dropped pin", address: `${e.lngLat.lat.toFixed(5)}, ${e.lngLat.lng.toFixed(5)}`, lat: e.lngLat.lat, lon: e.lngLat.lng }));
 }
 
@@ -2889,7 +2894,7 @@ setInterval(() => nav.active && routeWeather(), 15 * 60 * 1000);
 
 
 // ---- ADS-B (adsb.py): aircraft from their 1090 MHz broadcasts, on the map and the Radio screen ----
-const air = { data: null, timer: null };
+const air = { data: null, timer: null, sel: null };
 function airWanted() { return terrain.aircraft || (currentView === "radio" && radio.tab === "air"); }
 async function pollAir() {
   clearTimeout(air.timer);
@@ -2900,12 +2905,60 @@ async function pollAir() {
     map.getSource("plane-trails")?.setData(trailsGeojson(air.data));
   }
   if (currentView === "radio" && radio.tab === "air") renderRadio();
+  if (air.sel) paintPlane();
   air.timer = setTimeout(pollAir, 2000);
+}
+// Airline from the callsign's three-letter prefix (ICAO designators of the carriers seen most in the US and Canada).
+const AIRLINES = { AAL: "American", UAL: "United", DAL: "Delta", SWA: "Southwest", ASA: "Alaska", JBU: "JetBlue", NKS: "Spirit", FFT: "Frontier",
+  HAL: "Hawaiian", SKW: "SkyWest", RPA: "Republic", ENY: "Envoy", EDV: "Endeavor", QXE: "Horizon", ASH: "Mesa", CPZ: "Compass", GJS: "GoJet",
+  FDX: "FedEx", UPS: "UPS", GTI: "Atlas Air", ABX: "ABX Air", ATN: "Air Transport Intl", KFS: "Kalitta", PAC: "Polar Air", CKS: "Kalitta",
+  ACA: "Air Canada", WJA: "WestJet", ROU: "Air Canada Rouge", JZA: "Jazz", TSC: "Air Transat", POE: "Porter", SCX: "Sun Country", AAY: "Allegiant",
+  VXP: "Avelo", BTA: "ExpressJet", EJA: "NetJets", LXJ: "Flexjet", MXY: "Breeze", BAW: "British Airways", DLH: "Lufthansa", AFR: "Air France",
+  KLM: "KLM", VIR: "Virgin Atlantic", ANA: "All Nippon", JAL: "Japan Airlines", KAL: "Korean Air", CPA: "Cathay Pacific", QFA: "Qantas",
+  UAE: "Emirates", ETD: "Etihad", QTR: "Qatar", SIA: "Singapore", AMX: "Aeroméxico", VOI: "Volaris", AVA: "Avianca", CMP: "Copa",
+  RCH: "US Air Force (Air Mobility)", CNV: "US Navy", PAT: "US Army", EXEC: "US Government", CGA: "US Coast Guard", SAM: "US Air Force" };
+const SQUAWKS = { 7500: "hijack", 7600: "radio failure", 7700: "general emergency", 7000: "VFR, no assigned code", 1200: "VFR, no assigned code" };
+function planeInfo(p) {  // [label, value] pairs for what's known about an aircraft
+  const mph = settings.units === "imperial";
+  const call = p.call ? p.call.trim() : "";
+  const air_ = AIRLINES[call.slice(0, 3)] || (/^N\d/.test(call) ? "US-registered, private" : "");
+  const rows = [];
+  if (p.alt_ft != null) rows.push(["Altitude", `${p.alt_ft.toLocaleString()} ft${settings.units === "imperial" ? "" : ` (${Math.round(p.alt_ft * 0.3048).toLocaleString()} m)`}`]);
+  if (p.kt != null) rows.push(["Speed", mph ? `${Math.round(p.kt * 1.15078)} mph · ${Math.round(p.kt)} kt` : `${Math.round(p.kt * 1.852)} km/h · ${Math.round(p.kt)} kt`]);
+  if (p.track != null) rows.push(["Heading", `${Math.round(p.track)}° ${cardinal(p.track)}`]);
+  if (p.vr) rows.push(["Vertical", `${p.vr > 300 ? "climbing" : p.vr < -300 ? "descending" : "level"} ${Math.abs(Math.round(p.vr / 100) * 100)} ft/min`]);
+  if (p.km != null && lastPos) {
+    const b = (Math.atan2(Math.sin((p.lon - lastPos.lon) * RAD) * Math.cos(p.lat * RAD),
+      Math.cos(lastPos.lat * RAD) * Math.sin(p.lat * RAD) - Math.sin(lastPos.lat * RAD) * Math.cos(p.lat * RAD) * Math.cos((p.lon - lastPos.lon) * RAD)) / RAD + 360) % 360;
+    rows.push(["From you", `${distText(p.km * 1000)} to the ${cardinal(b)}`]);
+  } else if (p.km != null) rows.push(["From you", distText(p.km * 1000)]);
+  if (p.squawk) rows.push(["Squawk", `${p.squawk}${SQUAWKS[p.squawk] ? ` · ${SQUAWKS[p.squawk]}` : ""}`]);
+  rows.push(["Heard", p.age < 2 ? "just now" : `${Math.round(p.age)} s ago`]);
+  return { title: call ? call.replace(/^([A-Z]{3})(\d)/, "$1 $2") : `Aircraft ${p.icao}`, sub: [air_, `ICAO ${p.icao}`].filter(Boolean).join(" · "),
+    rows, alert: p.emergency || /^7(500|600|700)$/.test(p.squawk || "") };
+}
+function showPlane(icao) {
+  air.sel = icao;
+  paintPlane();
+}
+function paintPlane() {
+  const box = $("#plane-card"), p = air.sel && (air.data?.aircraft || []).find((x) => x.icao === air.sel);
+  box.hidden = !air.sel;
+  if (!air.sel) return;
+  if (!p) {  // gone from the list: out of range for a minute
+    box.innerHTML = `<div class="plane-head"><div><b>Aircraft ${escapeHtml(air.sel)}</b><span>No longer heard</span></div><button class="icon-btn" data-action="plane-close" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>`;
+    return;
+  }
+  const i = planeInfo(p);
+  box.classList.toggle("alert", !!i.alert);
+  box.innerHTML = `<div class="plane-head"><div><b>${escapeHtml(i.title)}</b><span>${escapeHtml(i.sub)}</span></div>
+    <button class="icon-btn" data-action="plane-close" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+    <div class="plane-grid">${i.rows.map(([k, v]) => `<span>${k}</span><b>${escapeHtml(v)}</b>`).join("")}</div>`;
 }
 function planesGeojson(d) {
   return { type: "FeatureCollection", features: (d?.aircraft || []).filter((p) => p.lat != null && p.pos_age < 60).map((p) => ({
     type: "Feature", geometry: { type: "Point", coordinates: [p.lon, p.lat] },
-    properties: { track: p.track ?? 0, label: `${p.call || p.icao}\n${p.alt_ft != null ? altText(p.alt_ft) : ""}`, stale: p.pos_age > 20 ? 1 : 0,
+    properties: { icao: p.icao, track: p.track ?? 0, label: `${p.call || p.icao}\n${p.alt_ft != null ? altText(p.alt_ft) : ""}`, stale: p.pos_age > 20 ? 1 : 0,
       emergency: p.emergency || /^7(500|600|700)$/.test(p.squawk || "") ? 1 : 0 } })) };
 }
 function trailsGeojson(d) {
@@ -3927,6 +3980,7 @@ const ACTIONS = {
     if (query) runSearch();
   },
   "nav-start": startNav,
+  "plane-close": () => showPlane(null),
   "fuel-stops": () => findAhead("gas"),
   "set-home": () => nav.dest && setHome(nav.dest),
   "home-here": () => (lastPos ? setHome({ name: "Home", lat: lastPos.lat, lon: lastPos.lon, address: "" }) : toast("No GPS fix yet")),

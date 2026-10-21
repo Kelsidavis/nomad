@@ -711,3 +711,14 @@ body.panel-hidden[data-music] .map-np { display: flex; }
   .man-dist { font-size: 1.7rem; }
 }
 .np-side .icon-btn:not(.on):not(.big) { color: #fff; }
+
+/* the details of a tapped aircraft, over the map */
+#plane-card { position: absolute; z-index: 500; left: 1rem; top: 5.2rem; width: min(22rem, calc(100% - 7rem)); padding: 0.8rem 1rem; border-radius: var(--radius);
+  background: var(--card); box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.35); }
+#plane-card.alert { outline: 2px solid var(--bad); }
+.plane-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
+.plane-head > div { display: flex; flex-direction: column; min-width: 0; }
+.plane-head b { font-size: 1.3rem; } .plane-head span { color: var(--text-2); font-size: 0.9rem; }
+.plane-head .icon-btn { width: 2.6rem; height: 2.6rem; flex: none; }
+.plane-grid { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; margin-top: 0.5rem; font-size: 0.95rem; }
+.plane-grid span { color: var(--text-2); }
