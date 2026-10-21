@@ -102,6 +102,7 @@ connection. `HEADUNIT_OFFLINE=1` turns the fallbacks off, to check the offline d
 | `BT_AUDIO` | a Bluetooth amp or speaker's address (`bluetoothctl devices`): `btaudio.service` keeps it connected and the default output; empty = the Pi's own audio |
 | `TPMS_FREQ`, `TPMS_LOW_PSI` | the tire sensors' frequency (`315M` US, `433.92M` Europe) and the pressure under which a tire counts as low (default 28 psi) |
 | `NWR_FREQ` | one weather radio frequency for the emergency-broadcast listener, instead of scanning all seven (`162.55M`) |
+| `CPU_MAX_MHZ` | cap the CPU's top speed (setup-pi.sh applies it at boot); 2000 keeps a Pi 5 on a weak supply from browning out, empty = no cap |
 | `BRIGHTNESS` | `auto`, `backlight`, `ddc` (HDMI monitors, needs ddcutil) or `software` |
 | `NEWS_FEEDS` | the starting feed list, `Name|url, Name|url` (after that, edit it on the News screen) |
 

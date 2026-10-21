@@ -50,3 +50,7 @@ MUSIC_OUT=~/CarMusic
 # Screen brightness: auto, backlight (a DSI touchscreen), ddc (an HDMI monitor, needs ddcutil) or software
 #BRIGHTNESS=auto
 
+# Cap the CPU's top speed in MHz (setup-pi.sh applies it at every boot). A Pi 5 draws a lot at its 2400 MHz maximum; on a weak
+# supply (the Pi sees 3 A, not 5) a cap of 2000 keeps the voltage up under load at a small cost in speed. Empty = no cap.
+#CPU_MAX_MHZ=2000
+
