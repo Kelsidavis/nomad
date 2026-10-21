@@ -414,7 +414,10 @@ async function initMap() {
   // a tap on a plane opens its details; a tap anywhere else closes them
   map.on("click", (e) => {
     const hit = map.getLayer("planes") ? map.queryRenderedFeatures([[e.point.x - 14, e.point.y - 14], [e.point.x + 14, e.point.y + 14]], { layers: ["planes"] })[0] : null;
-    if (hit) showPlane(hit.properties.icao); else if (air.sel) showPlane(null);
+    if (hit) return showPlane(hit.properties.icao);
+    if (air.sel) showPlane(null);
+    // a tap on the map beside an open screen (Media, Weather, ...) puts it away: the map, full width
+    if (currentView !== "home") { showView("home"); setPanel(true, false); }
   });
   map.on("contextmenu", (e) => previewRoute({ name: "Dropped pin", address: `${e.lngLat.lat.toFixed(5)}, ${e.lngLat.lng.toFixed(5)}`, lat: e.lngLat.lat, lon: e.lngLat.lng }));
 }
