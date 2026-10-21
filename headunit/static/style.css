@@ -806,3 +806,11 @@ body.panel-hidden[data-music] #no-fix { bottom: 6.6rem; }
 .maplibregl-ctrl-attrib.maplibregl-compact { transition: opacity 1.2s; }
 .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show) { opacity: 0.3; }
 .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show):hover, .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show):active { opacity: 1; }
+/* the visualizer behind the Radio screen's dial, as on the home card */
+.radio-now { position: relative; overflow: hidden; }
+.radio-now > :not(canvas) { position: relative; z-index: 1; }
+.radio-now canvas.viz.wide { height: 100%; opacity: 0.3; }
+/* long titles scroll */
+.track-title.marq, .track-sub.marq { text-overflow: clip; animation: marq var(--dur, 10s) ease-in-out infinite alternate; }
+@keyframes marq { 0%, 18% { text-indent: 0; } 82%, 100% { text-indent: var(--shift, 0); } }
+@media (prefers-reduced-motion: reduce) { .track-title.marq, .track-sub.marq { animation: none; text-overflow: ellipsis; } }

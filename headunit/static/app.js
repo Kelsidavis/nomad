@@ -130,6 +130,24 @@ function bind(name, value) {
   }
 }
 
+// A title or line that is wider than its space scrolls (to the end and back, resting at each) instead of being cut off
+// with "…". Watched for text changes and size changes, so it starts as soon as there is something long to show.
+function marquee(el) {
+  el.classList.remove("marq");
+  const d = el.scrollWidth - el.clientWidth;
+  if (el.clientWidth > 0 && d > 6) {
+    el.style.setProperty("--shift", `-${d + 10}px`);
+    el.style.setProperty("--dur", `${Math.max(5, 3 + d / 32)}s`);
+    el.classList.add("marq");
+  }
+}
+const marqSize = new ResizeObserver((es) => es.forEach((e) => marquee(e.target)));
+const marqText = new MutationObserver((ms) => ms.forEach((m) => marquee(m.target.nodeType === 1 ? m.target : m.target.parentElement)));
+for (const el of $$(".track-title, .track-sub")) {
+  marqSize.observe(el);
+  marqText.observe(el, { childList: true, characterData: true, subtree: true });
+}
+
 // ---- theme: auto follows sunrise/sunset at the current position ----
 function sunTimes(date, lat, lon) {
   const dayMs = 864e5, J1970 = 2440588, J2000 = 2451545, J0 = 0.0009, e = RAD * 23.4397;
