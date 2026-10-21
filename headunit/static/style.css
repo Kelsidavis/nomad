@@ -48,7 +48,7 @@ svg { width: 1.5rem; height: 1.5rem; fill: currentColor; flex: none; }
 
 /* ---- rail ---- */
 #rail { background: var(--rail); display: flex; flex-direction: column; align-items: center;
-  padding: 0.9rem 0; gap: 0.5rem; border-right: 1px solid var(--line); }
+  padding: 0.9rem 0; gap: 0.5rem; border-right: 1px solid var(--line); min-height: 0; overflow: hidden; }  /* the buttons shrink to fit a short screen; the mic keeps its size */
 #clock { font-size: 1.35rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 0.6rem; font-variant-numeric: tabular-nums; }
 #rail-temp { margin: -0.5rem 0 0.5rem; font-size: 0.85rem; color: var(--text-2); font-variant-numeric: tabular-nums; }
 #rail-temp[hidden] { display: none; }
@@ -60,7 +60,7 @@ svg { width: 1.5rem; height: 1.5rem; fill: currentColor; flex: none; }
 #status-icons { display: flex; flex-direction: column; gap: 0.5rem; align-items: center; margin-bottom: 0.4rem; }
 .st { width: 1.25rem; height: 1.25rem; }
 .st.off { color: var(--line); } .st.ok { color: var(--good); } .st.warn { color: var(--warn); } .st.bad { color: var(--bad); }
-.rail-btn.mic { background: var(--accent); color: var(--accent-text); border-radius: 50%; width: 4.2rem; height: 4.2rem; }
+.rail-btn.mic { background: var(--accent); color: var(--accent-text); border-radius: 50%; width: 4.2rem; height: 4.2rem; flex: none; }
 .rail-btn.mic.listening { animation: pulse 1.2s infinite; }
 
 /* ---- panel ---- */
