@@ -1429,6 +1429,16 @@ async function loadBrightness(patch = {}) {
 }
 function paintBrightness() {
   if (!bright) return;
+  const note = { ddc: "Sets the monitor's own brightness (DDC/CI).", backlight: "Sets the display's backlight.", software: "This screen has no brightness control of its own, so it is dimmed in software." }[bright.backend];
+  if ($("#bright-day")) {
+    if (document.activeElement !== $("#bright-day")) $("#bright-day").value = bright.day;
+    if (document.activeElement !== $("#bright-night")) $("#bright-night").value = bright.night;
+    $("#bright-day-v").textContent = `${bright.day}%`;
+    $("#bright-night-v").textContent = `${bright.night}%`;
+    $("#bright-set-note").textContent = note;
+    for (const b of $$("[data-bright-auto] button")) b.classList.toggle("on", (b.dataset.v === "on") === bright.auto);
+    $("#bright-night-row").hidden = !bright.auto;
+  }
   $("#dim").style.opacity = bright.backend === "software" ? String(((100 - bright.level) / 100) * 0.9) : "0";
   const night = bright.auto && bright.period === "night";
   $("#bright-title").textContent = `${night ? "Night brightness" : "Brightness"} · ${bright.level}%${bright.backend === "software" ? " (dimmed in software)" : ""}`;
@@ -1443,6 +1453,15 @@ function setBrightness(level) {  // changes the level of the period it is now
   setBrightness.t = setTimeout(() => loadBrightness({ [night ? "night" : "day"]: level }), 120);
 }
 $("#bright-range").addEventListener("input", (e) => setBrightness(+e.target.value));
+for (const key of ["day", "night"]) {
+  $(`#bright-${key}`).addEventListener("input", (e) => {
+    const v = Math.max(5, Math.min(100, +e.target.value));
+    if (bright) { bright[key] = v; if (key === (bright.auto && bright.period === "night" ? "night" : "day")) bright.level = v; paintBrightness(); }
+    clearTimeout(setBrightness.t2);
+    setBrightness.t2 = setTimeout(() => loadBrightness({ [key]: v }), 120);
+  });
+}
+for (const b of $$("[data-bright-auto] button")) b.addEventListener("click", () => loadBrightness({ auto: b.dataset.v === "on" }));
 brightReady = true;
 loadBrightness();
 setInterval(() => loadBrightness(), 60000);
@@ -1649,8 +1668,10 @@ function renderChat() {
   $("#chat-speak").classList.toggle("on", chatLog.speak);
   $("#chat-stop").hidden = !chatLog.busy;
   if (!chatLog.msgs.length) {
+    const tries = ["How far can I go on this tank?", "Any ships nearby?", "What's my tire pressure?", "Are there any emergency alerts?", "What's the weather doing?", "Take me home"];
     box.innerHTML = `<div class="empty chat-hello"><b>Ask me anything.</b> I run right here on the truck, offline.
-      Tap the box to type, or the mic to talk. With <b>Think</b> on, you can watch me reason before I answer.</div>`;
+      Tap the box to type, or the mic to talk. With <b>Think</b> on, you can watch me reason before I answer.
+      <div class="chat-tries">${tries.map((t) => `<button class="btn" data-action="chat-try" data-q="${escapeHtml(t)}">${escapeHtml(t)}</button>`).join("")}</div></div>`;
     return;
   }
   box.replaceChildren(...chatLog.msgs.map((m, i) => chatBubble(m, i)));
@@ -1971,6 +1992,7 @@ async function loadRadio(force) {
 
 function renderRadio() {
   for (const b of $$("#radio-tabs [data-tab]")) b.classList.toggle("on", b.dataset.tab === radio.tab);
+  $("#radio-tabs .on")?.scrollIntoView({ inline: "center", block: "nearest" });
   const info = radio.info, warn = $("#radio-warn");
   warn.hidden = !info || (info.sdr && info.rtl_fm);
   if (info && !info.sdr) warn.textContent = "SDR not connected: plug the Nooelec v5 into a USB 2 port.";
@@ -3145,7 +3167,9 @@ async function pollNwr() {
     save("nwrSeen", [...nwrSeen].slice(-60));
     const a = fresh.find((x) => x.level === "emergency") || fresh[0];
     const banner = $("#nwr-banner");
-    banner.innerHTML = `<b>${escapeHtml(a.event)}</b><span>${escapeHtml(a.origin)}${a.counties.length ? ` · ${a.counties.join(", ")}` : ""}${fresh.length > 1 ? ` · and ${fresh.length - 1} more (Radio → Listening)` : ""}</span><button class="btn" data-action="nwr-dismiss">Dismiss</button>`;
+    banner.classList.toggle("watch", a.level !== "emergency");
+    banner.innerHTML = `<svg><use href="#i-sos"/></svg><div class="nwr-text"><b>${escapeHtml(a.event)}</b><span>${escapeHtml(a.origin)}${a.counties.length ? ` · ${a.counties.join(", ")}` : ""}${fresh.length > 1 ? ` · and ${fresh.length - 1} more` : ""}</span></div>
+      <div class="nwr-btns"><button class="btn" data-action="nwr-open">Details</button><button class="btn" data-action="nwr-dismiss">Dismiss</button></div>`;
     banner.hidden = false;
     say(`${a.level === "emergency" ? "Emergency broadcast. " : "Alert. "}${a.event}, from ${a.origin}.`);
   }
@@ -3257,8 +3281,8 @@ function airRows() {
     b.querySelector(".t").textContent = `${p.call || p.icao}${p.squawk && /^7(500|600|700)$/.test(p.squawk) ? ` · squawk ${p.squawk}` : ""}`;
     b.querySelector(".s").textContent = [p.alt_ft != null ? altText(p.alt_ft) : "", p.kt != null ? `${settings.units === "imperial" ? Math.round(p.kt * 1.15078) + " mph" : Math.round(p.kt * 1.852) + " km/h"}` : "",
       p.track != null ? `heading ${cardinal(p.track)}` : "", p.vr ? (p.vr > 300 ? "climbing" : p.vr < -300 ? "descending" : "") : "", `ICAO ${p.icao}`].filter(Boolean).join(" · ");
-    b.querySelector(".sat-el").textContent = p.km != null ? distText(p.km * 1000) : "no position";
-    if (p.lat != null) b.onclick = () => { showView("home"); setFollow(false); map.easeTo({ center: [p.lon, p.lat], zoom: 10 }); if (!terrain.aircraft) toggleLayer("aircraft"); };
+    b.querySelector(".sat-el").textContent = p.lat == null ? "no position" : p.km != null ? distText(p.km * 1000) : "";
+    if (p.lat != null) b.onclick = () => { showView("home"); setFollow(false); map.easeTo({ center: [p.lon, p.lat], zoom: 10 }); showPlane(p.icao); if (!terrain.aircraft) toggleLayer("aircraft"); };
     rows.push(b);
   }
   if (!d.aircraft.length && d.running) rows.push(note("Nothing heard yet. Planes show up within a minute in range of the antenna: pull the Nooelec's whip out to about 6.9 cm and mount it high, or use a 1090 MHz antenna."));
@@ -4317,6 +4341,8 @@ const ACTIONS = {
   "tpms-assign": async (btn) => { tpmsInfo = await api("/api/tpms/assign", { json: { key: btn.dataset.key, wheel: btn.dataset.wheel } }).catch((e) => (toast(e.message), tpmsInfo)); renderTpms(); },
   "tpms-toggle": async () => { await api("/api/sdr", { json: { name: "tpms", enabled: !tpmsInfo?.enabled } }).catch(() => null); await loadTpms(); },
   "tpms-forget": async (btn) => { tpmsInfo = await api("/api/tpms/forget", { json: { key: btn.dataset.key } }).catch(() => tpmsInfo); renderTpms(); },
+  "chat-try": (btn) => askAssistant(btn.dataset.q),
+  "nwr-open": () => { $("#nwr-banner").hidden = true; showView("radio"); radio.tab = "sdr"; save("radioTab", "sdr"); renderRadio(); loadSdr(); },
   "nwr-dismiss": () => { $("#nwr-banner").hidden = true; },
   "fuel-stops": () => findAhead("gas"),
   "set-home": () => nav.dest && setHome(nav.dest),

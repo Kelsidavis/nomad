@@ -406,6 +406,12 @@
         <span>Spoken directions</span>
         <div class="seg" data-setting="prompts"><button data-v="on">On</button><button data-v="off">Off</button></div>
       </div>
+      <div class="setting stack" id="set-bright">
+        <span>Brightness<small id="bright-set-note"></small></span>
+        <label class="bright-line"><em>Day</em><input type="range" id="bright-day" min="5" max="100"><b id="bright-day-v"></b></label>
+        <label class="bright-line" id="bright-night-row"><em>Night</em><input type="range" id="bright-night" min="5" max="100"><b id="bright-night-v"></b></label>
+        <div class="seg" data-bright-auto><button data-v="on">Dim at night</button><button data-v="off">Same all day</button></div>
+      </div>
       <div class="setting stack">
         <span>Accent color</span>
         <div class="seg swatches" data-setting="accent">
