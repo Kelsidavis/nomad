@@ -1906,7 +1906,7 @@ function chRow(title, sub, ch, icon = "#i-radio") {
 
 // Tune: the stream URL goes into the music player, so pause, volume and the visualizer all work.
 async function tune({ freqs, mode, label, sub }) {
-  if (radio.info && !radio.info.sdr) await loadRadio(true);  // maybe it was plugged in since
+  if (!radio.info?.sdr) await loadRadio(true);  // not loaded yet (tuned by voice), or plugged in since
   if (!radio.info?.sdr) return toast("SDR not connected: plug in the Nooelec v5");
   stopVideo();
   media.queue = []; media.order = []; media.pos = -1;  // the music queue is over; next/previous now tune

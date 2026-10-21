@@ -1189,7 +1189,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.close_connection = True
         try:
-            while chunk := out.read(4096):
+            while chunk := out.read1(4096):  # (read1: send what's there, don't wait to fill 4 KB)
                 self.wfile.write(chunk)
         except OSError:
             pass

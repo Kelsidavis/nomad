@@ -113,8 +113,10 @@ class Tuner:
         release_sdr()
         cmd = ["rtl_fm", *MODES[mode], *[a for f in freqs for a in ("-f", str(f))], "-r", "48000",
                "-l", str(int(squelch or (60 if len(freqs) > 1 else 0))), "-"]
-        enc = ["ffmpeg", "-v", "error", "-f", "s16le", "-ar", "48000", "-ac", "1", "-i", "-",
-               "-c:a", "libmp3lame", "-b:a", "128k", "-f", "mp3", "-"]
+        # (no input probing or buffering: ffmpeg otherwise spends ~4 s studying the raw audio before the first byte)
+        enc = ["ffmpeg", "-v", "error", "-fflags", "nobuffer", "-probesize", "32", "-analyzeduration", "0",
+               "-f", "s16le", "-ar", "48000", "-ac", "1", "-i", "-",
+               "-c:a", "libmp3lame", "-b:a", "128k", "-flush_packets", "1", "-f", "mp3", "-"]
         with self.lock:
             self._stop()
             rtl = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
