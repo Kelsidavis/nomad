@@ -57,6 +57,7 @@ import tpms  # noqa: E402
 import fuel  # noqa: E402
 import hdradio  # noqa: E402
 import rds  # noqa: E402
+import stations  # noqa: E402
 import display  # noqa: E402
 import drives  # noqa: E402
 
@@ -844,6 +845,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.file(radio.capture_file(q["id"], q["name"]), "max-age=86400")
             if path == "/api/radio/stream":  # ?f=hz[&f=hz...]&mode=wbfm|am|nfm|air[&sq=][&label=]
                 return self.radio_stream(multi.get("f", []), q.get("mode", "wbfm"), q.get("sq", 0), q.get("label", ""), q.get("program", 0))
+            if path == "/api/stations":  # ?band=fm: the stations known around here (heard before), strongest first; km = from where it was heard
+                p = here()
+                return self.send(200, {"stations": stations.nearby(q.get("band", "fm"), p, float(q.get("radius", 80))), "pos": p})
             if path == "/api/radio/rds":  # an analog FM station's name and text (RDS)
                 return self.send(200, rds.status())
             if path == "/api/radio/hd":  # what the HD Radio decoder knows: station, song, programs, signal
@@ -1158,10 +1162,14 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/radio/settings":
                 return self.send(200, radio.save_settings(self.body_json().get("auto")))
             if path == "/api/radio/fmscan":
-                return self.send(200, {"stations": radio.fm_scan()})
+                found = radio.fm_scan()
+                stations.note_scan("fm", found, here())
+                return self.send(200, {"stations": stations.annotate("fm", found, here())})
             if path == "/api/radio/amscan":
                 try:
-                    return self.send(200, {"stations": radio.am_scan()})
+                    found = radio.am_scan()
+                    stations.note_scan("am", found, here())
+                    return self.send(200, {"stations": stations.annotate("am", found, here())})
                 except OSError as e:
                     return self.send(503, {"error": str(e)})
             if path == "/api/dashcam/lock":
@@ -1343,7 +1351,7 @@ def main():
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
                  lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here),
                  lambda: radio.weather_loop(here), net_loop, news.news_loop, obd.obd_loop, mesh_loop, road_loop,
-                 lambda: trip.trip_loop(lambda: state.position(time.time())), lambda: adsb.adsb_loop(here), lambda: sdr.sdr_loop(here, sdr_context)):
+                 lambda: trip.trip_loop(lambda: state.position(time.time())), lambda: adsb.adsb_loop(here), lambda: sdr.sdr_loop(here, sdr_context), lambda: stations.loop(here)):
         threading.Thread(target=loop, daemon=True).start()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True

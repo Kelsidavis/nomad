@@ -2187,7 +2187,8 @@ if (home) api("/api/home", { json: home }).catch(() => {});  // the Pi's copy, i
 const radio = {
   info: null, tab: load("radioTab", "fm"), on: null,  // on: {f, freqs, mode, label, sub} while radio plays
   fm: load("fmStations", []), am: load("amStations", []), presets: load("radioPresets", []), weather: null, loaded: 0,
-  names: load("stationNames", {}),  // station names heard over RDS or HD, by frequency
+  names: load("stationNames", {}),  // station names by frequency (the server's station memory, stations.py, is the source; this is the quick copy)
+  known: { fm: [], am: [], at: 0 },  // stations remembered around where the truck is
   hd: load("radioHd", true), program: 0, hdSeen: load("hdSeen", {}),  // HD Radio on/off, which program (0 = HD1), stations known to have it (or not)
   last: load("radioLast", { f: 98.5e6, mode: "wbfm" }),
 };
@@ -2213,6 +2214,7 @@ async function loadRadio(force) {
 }
 
 function renderRadio() {
+  if (radio.tab === "fm") loadKnown();
   for (const b of $$("#radio-tabs [data-tab]")) b.classList.toggle("on", b.dataset.tab === radio.tab);
   $("#radio-tabs .on")?.scrollIntoView({ inline: "center", block: "nearest" });
   const info = radio.info, warn = $("#radio-warn");
@@ -2228,8 +2230,12 @@ function renderRadio() {
     if (presets.length) rows.push(head("Presets"), ...presets.map((p) => chRow(p.mode === "wbfm" && radio.names[Math.round(p.f)] ? stationTitle(p.f) : p.label || freqText(p.f, p.mode), freqText(p.f, p.mode), p)));
     if (radio.tab === "fm") {
       rows.push(head("Stations", radio.fm.length ? "Scan again" : "Scan the band", radioScan));
-      if (radio.fm.length) rows.push(...radio.fm.map((s) => chRow(stationTitle(s.f), `${radio.names[Math.round(s.f)] ? freqText(s.f, "wbfm") + " · " : ""}${s.db} dB above the noise${radio.hdSeen[`wbfm:${Math.round(s.f)}`] ? " · HD Radio" : ""}`, { f: s.f, mode: "wbfm", label: freqText(s.f, "wbfm") })));
+      if (radio.fm.length) rows.push(...radio.fm.map((s) => {
+        const name = s.name || radio.names[Math.round(s.f)], hd = s.hd ?? radio.hdSeen[`wbfm:${Math.round(s.f)}`];
+        return chRow(name || freqText(s.f, "wbfm"), `${name ? freqText(s.f, "wbfm") + " · " : ""}${s.db} dB above the noise${hd ? " · HD Radio" : ""}`, { f: s.f, mode: "wbfm", label: freqText(s.f, "wbfm") });
+      }));
       else rows.push(note("Tap Scan to find the stations you can receive here, or tune with − and +."));
+      rows.push(...knownRows(radio.fm));
     } else {
       rows.push(head("Stations", radio.am.length ? "Scan again" : "Scan the band", () => radioScan("am")));
       if (radio.am.length) rows.push(...radio.am.map((s) => chRow(freqText(s.f, "am"), `${s.db} dB above the noise`, { f: s.f, mode: "am" })));
@@ -2338,6 +2344,29 @@ function radioStep(dir) {  // next/previous while radio plays: the next preset o
   const preset = radio.presets.find((p) => p.f === next && p.mode === mode);
   tune({ freqs: [next], mode, label: preset?.label || freqText(next, mode) });
 }
+// ---- the station memory (stations.py): names, HD, where and how strongly each station was heard ----
+async function loadKnown(force = false) {
+  if (!force && Date.now() - radio.known.at < 20000) return;
+  radio.known.at = Date.now();
+  const d = await api("/api/stations?band=fm").catch(() => null);
+  if (!d) return;
+  radio.known.fm = d.stations;
+  for (const st of d.stations) if (st.name) radio.names[st.f] = st.name;
+  save("stationNames", radio.names);
+  if (currentView === "radio" && radio.tab === "fm") renderRadio();
+}
+function knownRows(scanned) {  // remembered stations around here that this scan didn't turn up
+  const seen = new Set((scanned || []).map((s) => Math.round(s.f)));
+  const list = radio.known.fm.filter((s) => !seen.has(s.f));
+  if (!list.length) return [];
+  const rows = [head(`Known around here · ${list.length}`)];
+  for (const s of list.slice(0, 12)) {
+    const b = chRow(s.name || freqText(s.f, "wbfm"), [freqText(s.f, "wbfm"), s.km != null ? `heard ${s.km < 1 ? "here" : `${distText(s.km * 1000)} from here`}` : "", s.best_db != null ? `${Math.round(s.best_db)} dB` : "", s.hd ? "HD Radio" : "", s.last ? agoText(s.last.t) : ""].filter(Boolean).join(" · "), { f: s.f, mode: "wbfm", label: freqText(s.f, "wbfm") });
+    rows.push(b);
+  }
+  return rows;
+}
+
 // ---- HD Radio (hdradio.py): the decoder's view of the station, polled while an HD station plays ----
 let hdTimer = null, rdsTimer = null;
 // Stations rotate the 8 characters of their RDS name ("98.3 The", then "Peak!"); the server joins the pieces it has heard. A
@@ -2454,6 +2483,8 @@ async function radioScan(band = "fm") {
   try {
     radio[band] = (await api(`/api/radio/${band}scan`, { method: "POST" })).stations;
     save(band === "am" ? "amStations" : "fmStations", radio[band]);
+    for (const st of radio[band]) if (st.name) radio.names[Math.round(st.f)] = st.name;
+    if (band === "fm") loadKnown(true);
     toast(`Found ${radio[band].length} stations`);
   } catch (e) {
     toast(`Scan failed: ${e.message}`);
