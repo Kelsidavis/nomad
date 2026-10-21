@@ -56,6 +56,7 @@ import sdr  # noqa: E402
 import tpms  # noqa: E402
 import fuel  # noqa: E402
 import hdradio  # noqa: E402
+import namescan  # noqa: E402
 import rds  # noqa: E402
 import stations  # noqa: E402
 import display  # noqa: E402
@@ -1346,6 +1347,7 @@ def sdr_context():
 
 
 def main():
+    namescan.where = here
     display.start()  # the screen back at its saved brightness before any page is open
     intent.WARMERS.append(_warm_vibe)  # the vibe prompt is the longest: cache it before the first mix
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,

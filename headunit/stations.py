@@ -105,6 +105,30 @@ def note_scan(band, found, pos, now=None):
     _save(force=True)
 
 
+def mark_tried(band, f, got_rds, now=None):
+    """The name collector listened to this station: remember whether it sends RDS, so it isn't retried every few minutes."""
+    global _dirty
+    with _lock:
+        e = _db.get(key(band, f))
+        if e is not None:
+            e["tried"], e["rds"] = now or time.time(), bool(got_rds)
+            _dirty = True
+    _save(force=True)
+
+
+def unnamed(band, pos, radius_km=60, retry_s=86400):
+    """Stations heard near pos with no name yet and no recent fruitless try: the name collector's list, strongest first."""
+    now = time.time()
+    with _lock:
+        entries = [dict(e, sightings=list(e["sightings"])) for e in _db.values() if e["band"] == band and not e.get("name") and not e.get("hd_name")]
+    out = []
+    for e in entries:
+        d = _distance(e, pos)
+        if d is not None and d <= radius_km and not (e.get("tried") and now - e["tried"] < retry_s):
+            out.append((e.get("best_db") or 0, e["f"]))
+    return [f for _, f in sorted(out, reverse=True)]
+
+
 def lookup(band, f):
     with _lock:
         e = _db.get(key(band, f))

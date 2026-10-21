@@ -49,10 +49,15 @@ def ingest_line(line):
             _state["stereo"] = d["di"]["stereo"]
 
 
+def join_ps(seq):
+    """The pieces of a rotating 8-character name joined in the order heard, the one that opens with the frequency first."""
+    return " ".join(sorted(seq, key=lambda p: not p[:1].isdigit())) if seq else None
+
+
 def status():
     with _lock:
         s = dict(_state)
     # the whole name: the pieces joined, the one that opens with the frequency first ("98.3 The Peak!")
     seq = s.get("ps_seq") or []
-    s["ps_full"] = " ".join(sorted(seq, key=lambda p: not p[:1].isdigit())) if seq else None
+    s["ps_full"] = join_ps(seq)
     return s

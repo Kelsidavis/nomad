@@ -35,9 +35,10 @@ class Slice:
     one's output; when(ctx): whether now is a good time (moving, planes about, ...); every_when(ctx): a different
     gap for the moment (listen more often offline, say)."""
 
-    def __init__(self, name, label, tools, every, run, pipeline, parse, when=None, every_when=None, detail=""):
+    def __init__(self, name, label, tools, every, run, pipeline, parse, when=None, every_when=None, detail="", after=None):
         self.name, self.label, self.tools, self.every, self.run = name, label, tools, every, run
         self.pipeline, self.parse, self.when, self.every_when, self.detail = pipeline, parse, when, every_when, detail
+        self.after = after  # after(lines): called when a listen ends, with the number of lines it produced
         self.last_end = 0.0
         self.last_start = 0.0
         self.lines = 0  # lines the last listen produced
@@ -131,6 +132,11 @@ def listen(s, seconds=None):
     with _lock:
         _run.update(slice=None, procs=[])
     s.last_end, s.lines, s.listens = time.time(), n[0], s.listens + 1
+    if s.after:
+        try:
+            s.after(n[0])
+        except Exception as e:  # noqa: BLE001 - bookkeeping must not break the scheduler
+            s.error = f"{type(e).__name__}: {e}"[:160]
     return n[0]
 
 
