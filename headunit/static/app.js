@@ -2340,9 +2340,15 @@ function radioStep(dir) {  // next/previous while radio plays: the next preset o
 }
 // ---- HD Radio (hdradio.py): the decoder's view of the station, polled while an HD station plays ----
 let hdTimer = null, rdsTimer = null;
+// Stations rotate the 8 characters of their RDS name ("98.3 The", then "Peak!"); the server joins the pieces it has heard. A
+// remembered name only ever grows: a longer one that contains it replaces it, and a bare frequency is never a name.
 function rememberName(f, name) {
   name = (name || "").trim();
-  if (name && radio.names[Math.round(f)] !== name) { radio.names[Math.round(f)] = name; save("stationNames", radio.names); }
+  const key = Math.round(f), old = radio.names[key];
+  if (name.length < 3 || /^[\d.\s]*(fm|am|mhz)?$/i.test(name) || /^(fm|am|hd|radio)$/i.test(name)) return;
+  if (old && !(name.length > old.length && name.includes(old))) return;
+  radio.names[key] = name;
+  save("stationNames", radio.names);
 }
 async function watchRds() {  // an analog FM station's name and text (rds.py), while it plays
   const on = radio.on;
@@ -2351,7 +2357,7 @@ async function watchRds() {  // an analog FM station's name and text (rds.py), w
   if (radio.on !== on) return;
   if (r?.active || r?.ps) {
     on.rds = r;
-    if (r.ps) rememberName(on.f, r.ps);
+    if (r.ps) rememberName(on.f, r.ps_full || r.ps);
     const line = r.radiotext || r.ps;
     if (line) { bind("track-title", line); bind("track-sub", [r.ps, r.prog_type].filter(Boolean).join(" · ")); }
     paintDial();
@@ -2424,8 +2430,8 @@ function paintDial() {
   $("#radio-unit").textContent = radio.on?.freqs.length > 1 ? "" : x.u;
   const m = radio.on?.hd ? radio.on.meta : null, r = radio.on && !radio.on.hd ? radio.on.rds : null;
   const name = radio.on?.mode === "wbfm" ? radio.names[Math.round(radio.on.f)] : null;
-  $("#radio-label").textContent = radio.on ? (m?.title ? `${m.title}${m.artist ? ` — ${m.artist}` : ""}` : r?.radiotext || name || radio.on.label) : "Not playing";
-  $("#radio-sub").textContent = radio.on ? (radio.on.hd ? hdSub(m) : r?.ps || name ? [r?.ps || name, r?.prog_type, r?.callsign, r?.ta ? "traffic announcement" : ""].filter(Boolean).join(" · ") : radio.on.sub)
+  $("#radio-label").textContent = radio.on ? (m?.title ? `${m.title}${m.artist ? ` — ${m.artist}` : ""}` : r?.radiotext || name || r?.ps_full || radio.on.label) : "Not playing";
+  $("#radio-sub").textContent = radio.on ? (radio.on.hd ? hdSub(m) : r?.ps || name ? [name || r?.ps_full || r?.ps, r?.prog_type, r?.callsign, r?.ta ? "traffic announcement" : ""].filter(Boolean).join(" · ") : radio.on.sub)
     : `${{ wbfm: "FM", am: "AM", nfm: "Narrow FM", air: "Aviation AM" }[mode]} · tap play to listen`;
   $("#radio-hd").classList.toggle("on", radio.hd);
   $("#radio-hd").hidden = mode !== "wbfm";

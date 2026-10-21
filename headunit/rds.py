@@ -18,7 +18,7 @@ def reset(freq=None):
     with _lock:
         _state.clear()
         _state.update(active=freq is not None, freq=freq, started=time.time(), groups=0, ps=None, radiotext=None, prog_type=None, pi=None,
-                      callsign=None, tp=None, ta=None, stereo=None, is_music=None, country=None)
+                      callsign=None, tp=None, ta=None, stereo=None, is_music=None, country=None, ps_seq=[])
 
 
 def stop():
@@ -38,7 +38,11 @@ def ingest_line(line):
             if d.get(k) is not None:
                 _state[k] = d[k]
         if d.get("ps"):
-            _state["ps"] = d["ps"].strip() or _state["ps"]
+            ps = d["ps"].strip()
+            _state["ps"] = ps or _state["ps"]
+            # many stations rotate their 8 characters ("98.3 The", then "Peak!"): keep each different one, in the order heard
+            if ps and ps not in _state["ps_seq"] and len(_state["ps_seq"]) < 8:
+                _state["ps_seq"] = _state["ps_seq"] + [ps]
         if d.get("radiotext"):
             _state["radiotext"] = d["radiotext"].strip() or _state["radiotext"]
         if isinstance(d.get("di"), dict) and "stereo" in d["di"]:
@@ -47,4 +51,8 @@ def ingest_line(line):
 
 def status():
     with _lock:
-        return dict(_state)
+        s = dict(_state)
+    # the whole name: the pieces joined, the one that opens with the frequency first ("98.3 The Peak!")
+    seq = s.get("ps_seq") or []
+    s["ps_full"] = " ".join(sorted(seq, key=lambda p: not p[:1].isdigit())) if seq else None
+    return s
