@@ -114,8 +114,10 @@ def status():
     sensors.sort(key=lambda q: (q["wheel"] is None, -q["heard"], q["age"]))
     tires = {q["wheel"]: {"psi": q["psi"], "temp_c": q.get("temp_c"), "age": q["age"], "low": q["psi"] < low}
              for q in sensors if q["wheel"]}
-    return {"tires": tires, "sensors": sensors, "low_psi": low, "wheels": list(WHEELS),
-            "alerts": [f"{w} {t['psi']:.0f} psi" for w, t in tires.items() if t["low"] and t["age"] < 1800]}
+    on = sdr.enabled(SLICE)
+    return {"enabled": on, "missing": SLICE.missing(), "tires": tires, "sensors": sensors, "low_psi": low, "wheels": list(WHEELS),
+            # with listening off nothing new is heard, so old readings are no reason to warn
+            "alerts": [f"{w} {t['psi']:.0f} psi" for w, t in tires.items() if on and t["low"] and t["age"] < 1800]}
 
 
 def _pipeline():

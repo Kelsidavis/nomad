@@ -3312,7 +3312,9 @@ function renderTpms() {
     const x = t.tires[w];
     return `<div class="tire ${x ? (x.low ? "low" : "ok") : ""}"><small>${WHEEL_NAME[w]}</small><b>${x ? (imperial ? `${x.psi.toFixed(0)}<i> psi</i>` : `${(x.psi * 6.894757).toFixed(0)}<i> kPa</i>`) : "--"}</b><small>${x ? `${agoText(Date.now() / 1000 - x.age).replace("just now", "now")}${temp(x.temp_c)}` : "not assigned"}</small></div>`;
   };
-  const rows = [`<div class="tires">${["FL", "FR", "RL", "RR"].map(tile).join("")}</div>`];
+  const toggle = `<button class="btn ${t.enabled ? "on" : ""}" data-action="tpms-toggle"${t.missing?.length ? " disabled" : ""}>${t.missing?.length ? "rtl_433 isn't installed" : t.enabled ? "Listening for tire sensors: on" : "Listening for tire sensors: off"}</button>`;
+  if (!t.enabled) { box.innerHTML = `${toggle}<div class="fuel-note">Off: the SDR isn't listening for the tires, so there are no readings or low-pressure warnings. (Sensors with dead batteries don't transmit; the battery is sealed in the sensor, so it means a new sensor.)</div>`; return; }
+  const rows = [toggle, `<div class="tires">${["FL", "FR", "RL", "RR"].map(tile).join("")}</div>`];
   const free = t.sensors.filter((s) => !s.wheel);
   if (!t.sensors.length) rows.push(`<div class="fuel-note">No tire sensors heard yet. They only transmit while the truck is moving, and the SDR listens for a minute or so every few minutes (Radio → Listening).</div>`);
   else if (free.length) {
@@ -4313,6 +4315,7 @@ const ACTIONS = {
   "bright-auto": () => loadBrightness({ auto: !bright?.auto }),
   "plane-close": () => { showPlane(null); showShip(null); },
   "tpms-assign": async (btn) => { tpmsInfo = await api("/api/tpms/assign", { json: { key: btn.dataset.key, wheel: btn.dataset.wheel } }).catch((e) => (toast(e.message), tpmsInfo)); renderTpms(); },
+  "tpms-toggle": async () => { await api("/api/sdr", { json: { name: "tpms", enabled: !tpmsInfo?.enabled } }).catch(() => null); await loadTpms(); },
   "tpms-forget": async (btn) => { tpmsInfo = await api("/api/tpms/forget", { json: { key: btn.dataset.key } }).catch(() => tpmsInfo); renderTpms(); },
   "nwr-dismiss": () => { $("#nwr-banner").hidden = true; },
   "fuel-stops": () => findAhead("gas"),
