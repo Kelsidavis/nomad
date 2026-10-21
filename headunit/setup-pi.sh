@@ -129,7 +129,9 @@ fi
 systemctl daemon-reload
 install -m 755 "$REPO"/headunit/netwatch.sh /opt/headunit/netwatch.sh
 install -m 644 "$REPO"/headunit/netwatch.service /etc/systemd/system/netwatch.service
-systemctl enable gpsd.socket gpsd chrony headunit valhalla llm stt tts mesh netwatch >/dev/null 2>&1
+install -m 755 "$REPO"/headunit/btaudio.sh /opt/headunit/btaudio.sh
+install -m 644 "$REPO"/headunit/btaudio.service /etc/systemd/system/btaudio.service
+systemctl enable gpsd.socket gpsd chrony headunit valhalla llm stt tts mesh netwatch btaudio >/dev/null 2>&1
 systemctl restart gpsd chrony headunit
 systemctl start valhalla || true  # waits for the routing data
 systemctl start llm stt tts || true  # wait for their models

@@ -31,3 +31,6 @@ MUSIC_OUT=~/CarMusic
 
 # Weekly fuel price averages: a free key from https://www.eia.gov/opendata/register.php
 #EIA_API_KEY=
+
+# Bluetooth amp or speaker to keep connected and use as the output (its address: bluetoothctl devices); empty = built-in audio
+#BT_AUDIO=AA:BB:CC:DD:EE:FF

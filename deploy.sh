@@ -10,7 +10,7 @@ cd "$(dirname "$0")"
 echo "== $PI_HOST"
 rsync -rlt --delete --exclude __pycache__ --exclude '*.pyc' \
     headunit/*.py \
-    headunit/tts_server.py headunit/headunit-kiosk.sh headunit/static "$PI_HOST:/opt/headunit/"
+    headunit/tts_server.py headunit/headunit-kiosk.sh headunit/btaudio.sh headunit/static "$PI_HOST:/opt/headunit/"
 rsync -rlt headunit/tools/ "$PI_HOST:/opt/headunit/tools/" --exclude __pycache__
 rsync -rlt pi/*.py "$PI_HOST:/opt/dashlink/"
 # which version is on the Pi (Settings → System shows it)
@@ -20,7 +20,7 @@ if [ "$1" = "--all" ]; then
     # The units name user k and /home/k; on the Pi they become whoever PI_HOST logs in as.
     ssh -t "$PI_HOST" 'H=$HOME U=$(id -un); sudo sh -c "install -m 644 /tmp/nomad.conf /etc/nomad.conf &&
         for s in /tmp/*.service; do sed \"s#/home/k/#$H/#g; s/^User=k\$/User=$U/\" \"\$s\" > /etc/systemd/system/\$(basename \$s); done &&
-        systemctl daemon-reload && systemctl restart headunit llm stt tts"'
+        systemctl daemon-reload && systemctl restart headunit llm stt tts btaudio"'
 else
     ssh -t "$PI_HOST" 'sudo systemctl restart headunit'
 fi

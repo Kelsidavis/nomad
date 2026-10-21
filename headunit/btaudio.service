@@ -1,0 +1,16 @@
+[Unit]
+Description=NOMAD Bluetooth speaker keeper (reconnects the amp and makes it the default output)
+After=bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+ExecStart=/bin/sh /opt/headunit/btaudio.sh
+Restart=always
+RestartSec=10
+User=k
+# wpctl and pw-dump talk to the desktop user's PipeWire.
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+EnvironmentFile=-/etc/nomad.conf
+
+[Install]
+WantedBy=multi-user.target
