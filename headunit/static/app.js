@@ -70,7 +70,9 @@ async function playLocalSpeech() {
     localSpeech.shift();
   }
 }
+let lastSaid = "";
 function say(text) {
+  lastSaid = text;
   if (settings.prompts === "on") speak(text);
 }
 
@@ -3233,14 +3235,15 @@ async function moreLikeThis() {
 
 // ---- the voice command guide (Settings → Voice commands, the Assistant's Commands button, "Truck, help") ----
 // (only the ones that just look something up or move the map run when tapped: no fake fill-ups or routes)
-const TRY_SAFE = /^(where are we|what's the speed limit|find coffee|gas on the way|rest areas ahead|zoom in|any engine codes|what's my gas mileage|when's my oil change|how much is gas|how fast am i going|how much time is left|what time is it|what plane is that|read mesh messages|read the news)$/i;
+const TRY_SAFE = /^(where are we|how much farther|next turn|what song is this|will it rain|what's the temperature|repeat that|show the radio|what's the speed limit|find coffee|gas on the way|rest areas ahead|zoom in|any engine codes|what's my gas mileage|when's my oil change|how much is gas|how fast am i going|how much time is left|what time is it|what plane is that|read mesh messages|read the news)$/i;
 const COMMANDS = [
-  ["Navigation", ["navigate home", "navigate to Seattle", "find coffee", "gas on the way", "rest areas ahead", "I need gas", "where are we", "what's the speed limit", "cancel navigation", "zoom in"]],
-  ["Music", ["play Fleetwood Mac", "play something chill", "more like this", "next song", "pause", "volume up"]],
+  ["Navigation", ["navigate home", "navigate to Seattle", "how much farther", "next turn", "find coffee", "gas on the way", "rest areas ahead", "I need gas", "where are we", "what's the speed limit", "cancel navigation", "zoom in"]],
+  ["Music", ["play Fleetwood Mac", "play something chill", "more like this", "what song is this", "shuffle", "repeat this song", "next song", "pause", "volume to 40", "mute"]],
   ["Truck", ["any engine codes", "what's my gas mileage", "when's my oil change", "I put in 18.5 gallons at 3.89", "how much is gas", "reset trip", "how fast am I going"]],
   ["Time", ["set a timer for 10 minutes", "remind me to call Mom in 20 minutes", "how much time is left", "cancel the timer", "what time is it"]],
   ["Radio and sky", ["what plane is that", "tell the mesh I'm on my way", "read mesh messages"]],
-  ["News and safety", ["read the news", "evacuate", "nearest hospital", "nearest shelter"]],
+  ["News and safety", ["read the news", "will it rain", "what's the temperature", "evacuate", "nearest hospital", "nearest shelter"]],
+  ["Anything", ["repeat that", "show the radio", "dark mode", "thank you"]],
 ];
 function renderHelp() {
   const name = NAME.charAt(0).toUpperCase() + NAME.slice(1);
@@ -3545,8 +3548,89 @@ async function runCommand(raw, fromModel = false) {
     await lockClip();
     return "Clip saved";
   }
-  if ((m = text.match(/(?:show|open|go to)(?: the)? (cameras?|map|home|media|music|vehicle|car|settings)/))) {
-    const v = { camera: "cameras", cameras: "cameras", map: "home", home: "home", media: "media", music: "media", vehicle: "vehicle", car: "vehicle", settings: "settings" }[m[1]];
+  // everyday phrases (these used to go to the voice model)
+  if (/^(what('?s| is) (this )?(song|playing|this)|what song is (this|playing)|who (sings|is singing|is this)( this)?|name (of )?this song)$/.test(text)) {
+    const t = curTrack();
+    const msg = t && audio.src ? `${t.title}, by ${t.artist}${t.album ? `, from ${t.album}` : ""}` : radio.on ? `The radio: ${radio.on.label || "tuned in"}` : "Nothing's playing";
+    say(msg);
+    return msg;
+  }
+  if ((m = text.match(/^(?:turn )?shuffle(?: (on|off))?$|^(?:turn )?(on|off) shuffle$/))) {
+    const want = (m[1] || m[2]) ? (m[1] || m[2]) === "on" : !media.shuffle;
+    if (want !== media.shuffle) toggleShuffle();
+    return want ? "Shuffle on" : "Shuffle off";
+  }
+  if ((m = text.match(/^(?:turn )?(?:on |off )?repeat(?: (on|off|this song|one|all))?$|^(?:turn )?(on|off) repeat$|^repeat (?:the |this )?song$/))) {
+    const want = /off/.test(text) ? "off" : /song|one/.test(text) ? "one" : "all";
+    while (media.repeat !== want) cycleRepeat();
+    return { off: "Repeat off", all: "Repeat all", one: "Repeating this song" }[want];
+  }
+  if (/^(repeat that|say (that|it) again|what did you say)$/.test(text)) {
+    if (lastSaid) speak(lastSaid);
+    return lastSaid || "Nothing to repeat";
+  }
+  if (/^(mute|silence|quiet)( the)?( music| sound| audio)?$/.test(text)) {
+    const el = $('[data-bind="volume"]');
+    if (+el.value > 0) save("unmuteLevel", +el.value);
+    nudgeVolume(-100);
+    return "Muted";
+  }
+  if (/^unmute( the)?( music| sound| audio)?$|^sound on$/.test(text)) {
+    const el = $('[data-bind="volume"]');
+    nudgeVolume(load("unmuteLevel", 50) - Number(el.value || 0));
+    return "Sound on";
+  }
+  if ((m = text.match(/(?:set |turn )?(?:the )?volume (?:to |at )?(\d{1,3})(?: percent)?$/))) {
+    const el = $('[data-bind="volume"]');
+    nudgeVolume(Math.min(100, +m[1]) - Number(el.value || 0));
+    return `Volume ${Math.min(100, +m[1])}`;
+  }
+  if (/^(stop|turn off) the (radio|music)$|^(radio|music) off$/.test(text)) {
+    if (radio.on) radioStop();
+    audio.pause();
+    return "Off";
+  }
+  if (/^(restart|start over|replay) (the |this )?song$|^play (it|this) from the (start|beginning)$/.test(text)) {
+    if (!audio.src) return "Nothing playing";
+    audio.currentTime = 0;
+    audio.play();
+    return "From the top";
+  }
+  if (/^(how (much )?(far|farther|further|long)( to go| left)?|when do we get there|are we there yet|how far (is it|away))$/.test(text)) {
+    if (!nav.active) return "Not navigating";
+    const msg = `${$("#nav-left-dist").textContent} ${$("#nav-left-unit").textContent}, about ${$("#nav-left-time").textContent}. Arriving at ${fmtClock(new Date(nav.etaAt || Date.now()), true)}`;
+    say(msg.replace(/\bmi\b/, "miles").replace(/\bmin\b/, "minutes").replace(/\bh\b/, "hours"));
+    return msg;
+  }
+  if (/^(next turn|what('?s| is) (my |the )?next turn|where do i turn)$/.test(text)) {
+    if (!nav.active) return "Not navigating";
+    const msg = `${$("#man-dist").textContent}: ${$("#man-text").textContent}`;
+    say(msg);
+    return msg;
+  }
+  if ((m = text.match(/^(?:switch to |turn on |use )?(dark|light|night|day)(?: mode| theme)?$/))) {
+    const v = { dark: "dark", night: "dark", light: "light", day: "light" }[m[1]];
+    settings.theme = v;
+    save("settings", settings);
+    applyTheme();
+    return `${v === "dark" ? "Dark" : "Light"} mode (Settings → Theme → Auto to follow the sun again)`;
+  }
+  if (/^(what('?s| is) the )?(temperature|temp)( outside)?$|^how (hot|cold|warm) is it( outside)?$/.test(text)) {
+    const h = (radio.weather?.hourly || []).find((x) => new Date(x.t).getTime() + 3600000 > Date.now());
+    const msg = h ? `${h.temp} degrees, ${h.sky.toLowerCase()}` : "I don't have the weather yet";
+    say(msg);
+    return msg;
+  }
+  if (/^(thanks|thank you|thank you so much|cheers)$/.test(text)) { say("You're welcome"); return "You're welcome"; }
+  if (/^good (morning|afternoon|evening)$/.test(text)) {
+    const h = (radio.weather?.hourly || [])[0];
+    const msg = `Good ${text.split(" ")[1]}${h ? `. It's ${h.temp} degrees and ${h.sky.toLowerCase()}` : ""}${timers[0] ? `. You have a reminder in ${spanWords(timers[0].at - Date.now())}` : ""}`;
+    say(msg);
+    return msg;
+  }
+  if ((m = text.match(/(?:show|open|go to)(?: me)?(?: the)? (cameras?|map|home|media|music|vehicle|car|settings|radio|weather|news|assistant|emergency|help)\b/))) {
+    const v = { camera: "cameras", cameras: "cameras", map: "home", home: "home", media: "media", music: "media", vehicle: "vehicle", car: "vehicle", settings: "settings",
+      radio: "radio", weather: "weather", news: "news", assistant: "assistant", emergency: "emergency", help: "help" }[m[1]];
     showView(v);
     return `Showing ${v}`;
   }
