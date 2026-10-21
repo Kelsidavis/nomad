@@ -719,7 +719,9 @@ function renderNav() {
   $("#nav-then").textContent = next && r.stepAlong[k + 1] - r.stepAlong[k] < 300 ? `Then: ${next.instruction}` : "";
   nav.etaAt = Date.now() + leftS * 1000;
   $("#nav-eta").textContent = fmtClock(new Date(nav.etaAt));
-  $("#nav-left-time").textContent = fmtDur(leftS);
+  const lm = Math.max(1, Math.round(leftS / 60));
+  $("#nav-left-time").dataset.long = fmtDur(leftS);  // the words, for speech and the assistant
+  $("#nav-left-time").textContent = lm < 60 ? `${lm} min` : `${Math.floor(lm / 60)}h ${String(lm % 60).padStart(2, "0")}m`;
   const d = fmtDist(Math.max(0, total - along));
   $("#nav-left-dist").textContent = d.v;
   $("#nav-left-unit").textContent = d.u;
@@ -2024,10 +2026,27 @@ async function loadEmergency() {
   if (!radio.weather) radio.weather = await api("/api/weather").catch(() => null);
   renderEmergency();
 }
+// An empty screen that says what to do, with the buttons to do it.
+function emptyState(text, buttons = []) {
+  const d = document.createElement("div");
+  d.className = "empty empty-state";
+  const p = document.createElement("p");
+  p.textContent = text;
+  d.append(p);
+  for (const [label, fn] of buttons) {
+    const b = document.createElement("button");
+    b.className = "btn";
+    b.textContent = label;
+    b.onclick = fn;
+    d.append(b);
+  }
+  return d;
+}
+const openHomeSetting = () => { showView("settings"); setTimeout(() => $("#home-addr")?.closest(".setting")?.scrollIntoView({ block: "center" }), 200); };
 function renderEmergency() {
   const e = emergencyInfo, rows = [];
   if (!e) return;
-  if (e.error) return ($("#em-list").innerHTML = `<div class="empty">${escapeHtml(e.error)}</div>`);
+  if (e.error) return $("#em-list").replaceChildren(/home/i.test(e.error) ? emptyState(e.error, [["Set a home", openHomeSetting]]) : emptyState(e.error));
   const banner = document.createElement("div");
   banner.className = "em-banner " + (e.zone ? "danger" : "ok");
   banner.textContent = e.zone ? e.zone.advice : e.have_tsunami_data ? "Not in a tsunami evacuation zone." : "No tsunami zone data installed (tools/fetch_emergency.py).";
@@ -2530,7 +2549,7 @@ function hourlyChart(hours) {
 }
 function weatherRows() {
   const w = radio.weather, rows = [head("Satellite · NOAA GOES"), goesCard()];
-  if (!w || w.error) return [note(w?.error || "Loading the forecast…")];
+  if (!w || w.error) return [/home/i.test(w?.error || "") ? emptyState(w.error, [["Set a home", openHomeSetting]]) : note(w?.error || "Loading the forecast…")];
   rows.push(head(`Forecast · ${w.place}${w.stale ? " (offline: last update)" : ""}`));
   if (w.hourly?.length > 6) rows.push(hourlyChart(w.hourly));
   for (const a of w.alerts || []) {
@@ -3607,7 +3626,7 @@ function fuelLine(p) {
   const bits = [`~${p.gal.toFixed(p.gal < 10 ? 1 : 0)} gal`];
   if (p.cost != null) bits.push(money(p.cost, p.cost < 10 ? 2 : 0));
   if (p.arrive != null && !p.short) bits.push(`${Math.round(p.arrive)}% fuel left on arrival`);
-  const warn = p.short ? `<div class="fuel-warn">⚠ Not enough fuel for this route: about ${Math.round(p.range)} mi of range, the route is ${Math.round(p.mi)} mi</div>` : "";
+  const warn = p.short ? `<div class="fuel-warn">⚠ Low on fuel for this route: ${Math.round(p.range)} mi of range, ${Math.round(p.mi)} to go</div>` : "";
   return `${bits.join(" · ")}${warn}`;
 }
 function paintRouteFuel() {
@@ -4129,7 +4148,7 @@ function carContext() {
   if (whereNow) parts.push(whereText());
   if (lastState?.road?.road) parts.push(`on ${lastState.road.road}${lastState.road.limit_kmh ? ` (limit ${settings.units === "imperial" ? Math.round(lastState.road.limit_kmh / 1.609344 / 5) * 5 + " mph" : lastState.road.limit_kmh + " km/h"})` : ""}`);
   if (weatherText()) parts.push(weatherText());
-  if (nav.route && nav.dest) parts.push(`navigating to ${nav.dest.name}, arriving ${$("#nav-eta").textContent}, ${$("#nav-left-time").textContent} left`);
+  if (nav.route && nav.dest) parts.push(`navigating to ${nav.dest.name}, arriving ${$("#nav-eta").textContent}, ${$("#nav-left-time").dataset.long} left`);
   const t = curTrack();
   if (t && audio.src && !audio.paused) parts.push(`playing “${t.title}” by ${t.artist} from the album ${t.album}${t.year ? ` (${t.year})` : ""}`);
   if (speedNow(lastState) != null) parts.push(`${speedVal(speedNow(lastState))} ${settings.units === "imperial" ? "mph" : "km/h"}`);
@@ -4272,7 +4291,7 @@ async function runCommand(raw, fromModel = false) {
   }
   if (/^(how (much )?(far|farther|further|long)( to go| left)?|when do we get there|are we there yet|how far (is it|away))$/.test(text)) {
     if (!nav.active) return "Not navigating";
-    const msg = `${$("#nav-left-dist").textContent} ${$("#nav-left-unit").textContent}, about ${$("#nav-left-time").textContent}. Arriving at ${fmtClock(new Date(nav.etaAt || Date.now()), true)}`;
+    const msg = `${$("#nav-left-dist").textContent} ${$("#nav-left-unit").textContent}, about ${$("#nav-left-time").dataset.long}. Arriving at ${fmtClock(new Date(nav.etaAt || Date.now()), true)}`;
     say(msg.replace(/\bmi\b/, "miles").replace(/\bmin\b/, "minutes").replace(/\bh\b/, "hours"));
     return msg;
   }
@@ -4356,7 +4375,7 @@ async function runCommand(raw, fromModel = false) {
   }
   if (/(send|share|tell) (my |our )?(eta|arrival)( time)? (to|on|with) the mesh|tell the mesh (my|our) eta/.test(text)) {
     if (!nav.active || !nav.dest) return "No route: there's no arrival time to send";
-    const msg = `ETA ${fmtClock(new Date(nav.etaAt || Date.now()), true)} at ${nav.dest.name} (${$("#nav-left-time").textContent} out${whereNow ? `, now ${whereText()}` : ""})`;
+    const msg = `ETA ${fmtClock(new Date(nav.etaAt || Date.now()), true)} at ${nav.dest.name} (${$("#nav-left-time").dataset.long} out${whereNow ? `, now ${whereText()}` : ""})`;
     await meshSend(msg);
     return `Sent to the mesh: ${msg}`;
   }
@@ -4442,7 +4461,7 @@ async function runCommand(raw, fromModel = false) {
     return msg;
   }
   if (/(when will (we|i) (get|arrive)|what's (the|my) eta|^eta$|how (much )?long (until|till|to go))/.test(text)) {
-    const msg = nav.route ? `Arriving at ${$("#nav-eta").textContent}, ${$("#nav-left-time").textContent} to go` : "Not navigating";
+    const msg = nav.route ? `Arriving at ${$("#nav-eta").textContent}, ${$("#nav-left-time").dataset.long} to go` : "Not navigating";
     say(msg);
     return msg;
   }

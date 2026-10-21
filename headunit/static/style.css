@@ -78,7 +78,7 @@ svg { width: 1.5rem; height: 1.5rem; fill: currentColor; flex: none; }
 .btn.primary { background: var(--accent); color: var(--accent-text); }
 .btn.danger { background: color-mix(in srgb, var(--bad) 18%, var(--card-2)); color: var(--bad); }
 .btn:active, .icon-btn:active, .map-btn:active, .list-item:active { transform: scale(0.97); filter: brightness(1.15); }
-.btn-row { display: flex; gap: 0.6rem; margin-top: 0.9rem; } .btn-row .btn { flex: 1; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.9rem; } .btn-row .btn { flex: 1 1 auto; white-space: nowrap; }
 .icon-btn { width: 3.4rem; height: 3.4rem; border-radius: 50%; display: grid; place-items: center; }
 .icon-btn svg { width: 1.8rem; height: 1.8rem; }
 .icon-btn.big { background: var(--accent); color: var(--accent-text); width: 4rem; height: 4rem; }
@@ -104,7 +104,7 @@ svg { width: 1.5rem; height: 1.5rem; fill: currentColor; flex: none; }
 .nav-then:empty { display: none; }
 .nav-foot { display: flex; align-items: center; gap: 1rem; margin-top: 0.9rem; padding-top: 0.8rem; border-top: 1px solid var(--line); }
 .nav-foot > div { display: flex; flex-direction: column; }
-.nav-foot b { font-size: 1.2rem; font-variant-numeric: tabular-nums; } .nav-foot div:first-child b { color: var(--good); }
+.nav-foot b { font-size: 1.2rem; font-variant-numeric: tabular-nums; white-space: nowrap; } .nav-foot div:first-child b { color: var(--good); }
 .nav-foot span { font-size: 0.8rem; color: var(--text-2); }
 .nav-foot .btn { margin-left: auto; min-height: 2.8rem; }
 
@@ -783,3 +783,12 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 .bubble.acted { border-left: 3px solid var(--accent); }
 .bubble.acted .bubble-text::before { content: "✓ "; color: var(--accent); font-weight: 700; }
 .bubble.acted .btn { margin-top: 0.5rem; min-height: 2.4rem; }
+.empty-state { display: flex; flex-direction: column; align-items: center; gap: 0.9rem; padding: 2rem 1.2rem; text-align: center; }
+.empty-state p { margin: 0; max-width: 28rem; }
+.route-fuel { font-size: 0.9rem; }
+@media (max-width: 900px) {
+  .search-bar { padding: 0 0.7rem; gap: 0.4rem; font-size: 0.9rem; }
+  .search-bar span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .search-bar svg { width: 1.2rem; height: 1.2rem; }
+  .media-card .art { width: 3.4rem; height: 3.4rem; }
+}
