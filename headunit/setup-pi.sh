@@ -12,7 +12,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 echo "== packages"
 apt-get update -qq
-apt-get install -y -qq adb rclone fuse3 gpsd gpsd-clients chrony docker.io alsa-utils rtl-sdr satdump ffmpeg python3-venv fonts-noto-color-emoji >/dev/null
+apt-get install -y -qq adb rclone fuse3 gpsd gpsd-clients chrony docker.io alsa-utils rtl-sdr satdump ffmpeg python3-venv fonts-noto-color-emoji ddcutil brightnessctl >/dev/null
 
 echo "== SDR: keep the kernel's DVB-T TV driver off the dongle so rtl-sdr can use it"
 printf 'blacklist dvb_usb_rtl28xxu\nblacklist rtl2832\nblacklist rtl2830\n' > /etc/modprobe.d/rtl-sdr-blacklist.conf

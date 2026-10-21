@@ -53,6 +53,7 @@
   <symbol id="i-flag" viewBox="0 0 24 24"><path d="M14.4 6 14 4H5v17h2v-7h5.6l.4 2h7V6z"/></symbol>
   <symbol id="i-star" viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.9 3.9.1.1 4-4H6a7 7 0 1 1 2.1 5l-1.4 1.4A9 9 0 1 0 13 3zm-1 5v5l4.3 2.5.7-1.2-3.5-2.1V8z"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24"><path d="M18 8h-1V6A5 5 0 0 0 7 6v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2zm-6 9a2 2 0 1 1 2-2 2 2 0 0 1-2 2zm3.1-9H8.9V6a3.1 3.1 0 0 1 6.2 0z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM2 13h2a1 1 0 0 0 0-2H2a1 1 0 0 0 0 2zm18 0h2a1 1 0 0 0 0-2h-2a1 1 0 0 0 0 2zM11 2v2a1 1 0 0 0 2 0V2a1 1 0 0 0-2 0zm0 18v2a1 1 0 0 0 2 0v-2a1 1 0 0 0-2 0zM5.99 4.58a1 1 0 0 0-1.41 1.41l1.06 1.06a1 1 0 0 0 1.41-1.41zm12.37 12.37a1 1 0 0 0-1.41 1.41l1.06 1.06a1 1 0 0 0 1.41-1.41zm1.06-10.96a1 1 0 0 0-1.41-1.41l-1.06 1.06a1 1 0 0 0 1.41 1.41zM7.05 18.36a1 1 0 0 0-1.41-1.41l-1.06 1.06a1 1 0 0 0 1.41 1.41z"/></symbol>
   <symbol id="i-volume" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></symbol>
   <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 16.5-7.4-5.7L3 12l9 7 9-7-1.6-1.2zM12 14l7.4-5.7L21 7l-9-7-9 7 1.6 1.3z"/></symbol>
   <symbol id="i-turn" viewBox="0 0 48 48"><path d="M24 4 12 18h8v26h8V18h8z"/></symbol>
@@ -60,6 +61,7 @@
   <symbol id="i-roundabout" viewBox="0 0 48 48"><path d="M24 4 14 15h7v6.2A9 9 0 1 0 33 30h-4a5 5 0 1 1-8-4v18h6V15h7z"/></symbol>
 </svg>
 
+<div id="dim"></div>
 <div id="app">
   <nav id="rail">
     <div id="clock">--:--</div>
@@ -459,12 +461,28 @@
     <div id="speed-chip"><b data-bind="speed">--</b><span data-bind="speed-unit">mph</span></div>
     <div id="limit-sign" hidden><small>SPEED<br>LIMIT</small><b>--</b></div>
     <div id="map-ctrls">
+      <button class="map-btn" id="bright-btn" data-action="bright-toggle" aria-label="Brightness"><svg><use href="#i-sun"/></svg></button>
       <button class="map-btn" id="layers-btn" data-action="layers" aria-label="Map layers"><svg><use href="#i-layers"/></svg></button>
       <button class="map-btn" data-action="zoom-in" aria-label="Zoom in"><svg><use href="#i-plus"/></svg></button>
       <button class="map-btn" data-action="zoom-out" aria-label="Zoom out"><svg><use href="#i-minus"/></svg></button>
       <button class="map-btn" id="recenter" data-action="recenter" aria-label="Re-center" hidden><svg><use href="#i-locate"/></svg></button>
     </div>
     <div id="plane-card" hidden></div>
+    <!-- while navigating: the volume, top right -->
+    <div id="nav-vol" hidden>
+      <button class="icon-btn" data-action="vol-down" aria-label="Volume down"><svg><use href="#i-minus"/></svg></button>
+      <button class="icon-btn" id="vol-mute" data-action="vol-mute" aria-label="Mute"><svg><use href="#i-volume"/></svg><b id="vol-level"></b></button>
+      <button class="icon-btn" data-action="vol-up" aria-label="Volume up"><svg><use href="#i-plus"/></svg></button>
+    </div>
+    <div id="bright-pop" hidden>
+      <div class="bright-title" id="bright-title">Brightness</div>
+      <div class="bright-row">
+        <button class="icon-btn" data-action="bright-down" aria-label="Dimmer"><svg><use href="#i-minus"/></svg></button>
+        <input type="range" id="bright-range" min="5" max="100">
+        <button class="icon-btn" data-action="bright-up" aria-label="Brighter"><svg><use href="#i-plus"/></svg></button>
+      </div>
+      <button class="btn" id="bright-auto" data-action="bright-auto">Dim at night</button>
+    </div>
     <div id="no-fix" hidden>Waiting for GPS…</div>
     <div id="radar-chip" hidden><i></i><span>Radar</span></div>
     <button id="timer-chip" class="map-chip" data-action="timer-cancel" hidden><b>0:00</b><span>Timer</span></button>

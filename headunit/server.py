@@ -50,6 +50,7 @@ import obd  # noqa: E402
 import trip  # noqa: E402
 import adsb  # noqa: E402
 import fuel  # noqa: E402
+import display  # noqa: E402
 import drives  # noqa: E402
 
 PORT = int(os.environ.get("HEADUNIT_PORT", 8800))
@@ -756,10 +757,16 @@ def cover_path(album_id):
     raise FileNotFoundError("no cover")
 
 
-def volume(level=None):
+def volume(level=None, mute=None):
+    """The output's volume (and set it, or mute it: True, False or "toggle"). Raising the volume unmutes."""
     env = {**os.environ, "XDG_RUNTIME_DIR": os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")}
     if level is not None:
         subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", f"{max(0, min(100, level)) / 100:.2f}"],
+                       env=env, timeout=3, check=False)
+        if mute is None and level > 0:
+            mute = False
+    if mute is not None:
+        subprocess.run(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle" if mute == "toggle" else "1" if mute else "0"],
                        env=env, timeout=3, check=False)
     out = subprocess.run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], capture_output=True, text=True,
                          env=env, timeout=3).stdout  # "Volume: 0.40 [MUTED]"
@@ -894,6 +901,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, media_library()["body"], "application/json")
             if path == "/api/volume":
                 return self.send(200, volume())
+            if path == "/api/brightness":
+                return self.send(200, display.status())
             if path == "/api/media/tag":  # ?kind=mood|style|genre|decade&tag=: the tracks with it, as library indices
                 lib = media_library()
                 return self.send(200, {"tracks": music.tag_tracks(lib["tracks"], lib["tags"], q["kind"], q["tag"])})
@@ -986,8 +995,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, intent.chat(body["text"], _with_engine(str(body.get("context", ""))[:400])))
                 except (OSError, urllib.error.URLError) as e:
                     return self.send(503, {"error": f"voice model not running: {e}"})
-            if path == "/api/volume":
-                return self.send(200, volume(int(self.body_json()["level"])))
+            if path == "/api/volume":  # {level?, mute?: true | false | "toggle"}
+                b = self.body_json()
+                return self.send(200, volume(int(b["level"]) if b.get("level") is not None else None, b.get("mute")))
+            if path == "/api/brightness":  # {auto?, day?, night?, period?: "day" | "night"}
+                b = self.body_json()
+                return self.send(200, display.update(b.get("auto"), b.get("day"), b.get("night"), b.get("period")))
             if path == "/api/sim" and SIM:
                 state.set(sim=self.body_json() or None)
                 return self.send(200, {"ok": True})
@@ -1278,6 +1291,7 @@ def _warm_vibe():
 
 
 def main():
+    display.start()  # the screen back at its saved brightness before any page is open
     intent.WARMERS.append(_warm_vibe)  # the vibe prompt is the longest: cache it before the first mix
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
                  lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here),

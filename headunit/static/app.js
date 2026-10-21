@@ -158,6 +158,7 @@ function applyTheme() {
   if (document.documentElement.dataset.theme !== theme) {
     document.documentElement.dataset.theme = theme;
     restyleMap();
+    brightnessSoon();  // the night level starts with the dark theme
   }
   applyAccent();
 }
@@ -415,6 +416,7 @@ async function initMap() {
   map.on("click", (e) => {
     const hit = map.getLayer("planes") ? map.queryRenderedFeatures([[e.point.x - 14, e.point.y - 14], [e.point.x + 14, e.point.y + 14]], { layers: ["planes"] })[0] : null;
     if (hit) return showPlane(hit.properties.icao);
+    $("#bright-pop").hidden = true;
     if (air.sel) showPlane(null);
     // a tap on the map beside an open screen (Media, Weather, ...) puts it away: the map, full width
     if (currentView !== "home") { showView("home"); setPanel(true, false); }
@@ -676,6 +678,9 @@ function renderNav() {
   $(".nav-preview", card).hidden = mode !== "preview";
   $(".nav-active", card).hidden = mode !== "active";
   $("#map-search").hidden = mode === "active";
+  document.body.classList.toggle("navigating", mode === "active");
+  $("#nav-vol").hidden = mode !== "active";
+  if (mode === "active" && navVol.level == null) volStep(0);
   $("#map-banner").hidden = !(mode === "active" && currentView !== "home");
   if (mode === "idle") return renderRecents();
   const r = nav.route;
@@ -1373,6 +1378,59 @@ function nudgeVolume(delta) {
   bind("volume", level);
   api("/api/volume", { json: { level } }).catch(() => {});
 }
+
+// The volume while navigating (top right): down, mute, up; the output's own volume and mute (server.py /api/volume).
+const navVol = { level: null, muted: false };
+function paintNavVol() {
+  const btn = $("#vol-mute");
+  if (!btn) return;
+  btn.classList.toggle("muted", navVol.muted || navVol.level === 0);
+  btn.querySelector("use").setAttribute("href", navVol.muted || navVol.level === 0 ? "#i-mute" : "#i-volume");
+  $("#vol-level").textContent = navVol.muted ? "" : navVol.level ?? "";
+  if (navVol.level != null) bind("volume", navVol.level);
+}
+async function volAct(body) {
+  const v = await api("/api/volume", { json: body }).catch(() => null);
+  if (v) { Object.assign(navVol, v); paintNavVol(); }
+}
+async function volStep(d) {
+  if (navVol.level == null) Object.assign(navVol, await api("/api/volume").catch(() => ({})));
+  return volAct({ level: Math.max(0, Math.min(100, (navVol.level ?? 50) + d)) });
+}
+setInterval(() => nav.active && api("/api/volume").then((v) => { Object.assign(navVol, v); paintNavVol(); }).catch(() => {}), 10000);
+
+// ---- brightness (display.py): one level for the day and one for the night; the hardware, else a black layer ----
+let bright = null;
+function isNight() {  // by the sun, like the automatic theme
+  const now = new Date(), p = lastPos;
+  if (p) { const [rise, set] = sunTimes(now, p.lat, p.lon); return !(now > rise && now < set); }
+  return !(now.getHours() >= 7 && now.getHours() < 19);
+}
+var brightReady = false;  // (applyTheme runs once before this part of the file has)
+function brightnessSoon() { if (brightReady) loadBrightness(); }
+async function loadBrightness(patch = {}) {
+  bright = await api("/api/brightness", { json: { period: isNight() ? "night" : "day", ...patch } }).catch(() => bright);
+  paintBrightness();
+}
+function paintBrightness() {
+  if (!bright) return;
+  $("#dim").style.opacity = bright.backend === "software" ? String(((100 - bright.level) / 100) * 0.9) : "0";
+  const night = bright.auto && bright.period === "night";
+  $("#bright-title").textContent = `${night ? "Night brightness" : "Brightness"} · ${bright.level}%${bright.backend === "software" ? " (dimmed in software)" : ""}`;
+  if (document.activeElement !== $("#bright-range")) $("#bright-range").value = bright.level;
+  $("#bright-auto").classList.toggle("on", bright.auto);
+}
+function setBrightness(level) {  // changes the level of the period it is now
+  const night = bright?.auto && bright.period === "night";
+  level = Math.max(bright?.min ?? 5, Math.min(100, Math.round(level)));
+  if (bright) { bright[night ? "night" : "day"] = bright.level = level; paintBrightness(); }
+  clearTimeout(setBrightness.t);
+  setBrightness.t = setTimeout(() => loadBrightness({ [night ? "night" : "day"]: level }), 120);
+}
+$("#bright-range").addEventListener("input", (e) => setBrightness(+e.target.value));
+brightReady = true;
+loadBrightness();
+setInterval(() => loadBrightness(), 60000);
 
 // ---- visualizer: a Web Audio analyser on the player, drawn at 30 fps while music plays and it's on screen ----
 // Style and color are settings (viz, vizColor); the button on the album art cycles the style.
@@ -3809,6 +3867,10 @@ async function runCommand(raw, fromModel = false) {
     showView(v);
     return `Showing ${v}`;
   }
+  if ((m = text.match(/^(?:set |turn )?(?:the )?(?:screen |display )?brightness (?:to |at )?(\d{1,3})(?: percent)?$/))) { setBrightness(+m[1]); return `Brightness ${Math.min(100, +m[1])}`; }
+  if (/^(?:full|max(?:imum)?) brightness$|^brightest$/.test(text)) { setBrightness(100); return "Brightness 100"; }
+  if (/^(?:dim|darken) the (?:screen|display)$|^(?:screen |display )?(?:dimmer|darker)$|^(?:turn )?brightness down$/.test(text)) { setBrightness((bright?.level ?? 100) - 20); return "Dimmer"; }
+  if (/^(?:brighten|brighter)(?: the (?:screen|display))?$|^(?:screen |display )?brighter$|^(?:turn )?brightness up$/.test(text)) { setBrightness((bright?.level ?? 100) + 20); return "Brighter"; }
   if (/(volume up|louder|turn it up)/.test(text)) { nudgeVolume(10); return "Volume up"; }
   if (/(volume down|quieter|turn it down)/.test(text)) { nudgeVolume(-10); return "Volume down"; }
   if (/(how fast|my speed|what speed)/.test(text)) {
@@ -3983,6 +4045,13 @@ const ACTIONS = {
     if (query) runSearch();
   },
   "nav-start": startNav,
+  "vol-down": () => volStep(-10),
+  "vol-up": () => volStep(10),
+  "vol-mute": () => volAct({ mute: "toggle" }),
+  "bright-toggle": () => { const p = $("#bright-pop"); p.hidden = !p.hidden; if (!p.hidden) loadBrightness(); },
+  "bright-down": () => setBrightness((bright?.level ?? 100) - 10),
+  "bright-up": () => setBrightness((bright?.level ?? 100) + 10),
+  "bright-auto": () => loadBrightness({ auto: !bright?.auto }),
   "plane-close": () => showPlane(null),
   "fuel-stops": () => findAhead("gas"),
   "set-home": () => nav.dest && setHome(nav.dest),

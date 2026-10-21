@@ -722,3 +722,22 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 .plane-head .icon-btn { width: 2.6rem; height: 2.6rem; flex: none; }
 .plane-grid { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; margin-top: 0.5rem; font-size: 0.95rem; }
 .plane-grid span { color: var(--text-2); }
+
+/* brightness: the quick control by the map buttons, and the software dimmer (a black layer over everything) */
+#dim { position: fixed; inset: 0; z-index: 2000; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+#bright-pop { position: absolute; z-index: 600; right: 5.4rem; bottom: 1.6rem; width: min(22rem, calc(100% - 7rem)); padding: 0.8rem 1rem; border-radius: var(--radius);
+  background: var(--card); box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 0.6rem; }
+#bright-pop[hidden] { display: none; }
+.bright-title { font-weight: 600; }
+.bright-row { display: flex; align-items: center; gap: 0.6rem; }
+.bright-row input { flex: 1; min-width: 0; }
+#bright-auto.on { background: var(--accent); color: var(--accent-text); }
+/* the volume while navigating, top right (the map's attribution moves down out of the way) */
+#nav-vol { position: absolute; z-index: 550; top: 1rem; right: 1rem; display: flex; align-items: center; gap: 0.2rem; padding: 0.25rem; border-radius: 2.2rem;
+  background: var(--card); box-shadow: var(--shadow); }
+#nav-vol[hidden] { display: none; }
+#nav-vol .icon-btn { width: 3.4rem; height: 3.4rem; }
+#vol-mute { width: auto; min-width: 5rem; gap: 0.3rem; padding: 0 0.7rem; border-radius: 1.7rem; display: flex; }
+#vol-mute.muted { color: var(--bad); }
+#vol-level { font-variant-numeric: tabular-nums; font-size: 1rem; }
+body.navigating .maplibregl-ctrl-top-right { top: 4.9rem; }
