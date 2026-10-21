@@ -9,6 +9,7 @@ import json
 import os
 import re
 import pathlib
+import queue
 import shutil
 import statistics
 import subprocess
@@ -17,6 +18,7 @@ import time
 import urllib.request
 
 import hdradio
+import rds
 
 DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit"))
 TLE = DATA / "tle.txt"
@@ -120,30 +122,91 @@ class Tuner:
         freqs = [int(f) for f in freqs][:32]
         release_sdr()
         hd = mode in ("hd", "hdam")
+        # analog FM on one station: the demodulator runs at 171 kHz so RDS (the station's name and text, on a 57 kHz
+        # subcarrier) can be decoded alongside the audio; without redsea it is the plain audio path
+        with_rds = mode == "wbfm" and len(freqs) == 1 and bool(shutil.which("redsea"))
         if hd:
             if not shutil.which("nrsc5"):
                 raise OSError("The HD Radio decoder isn't installed (setup-pi.sh builds nrsc5)")
             # nrsc5 takes a frequency in Hz above 10000, a program number (0 = HD1), and for AM its own flags
             cmd = ["nrsc5", *(["--am", "-D", "2"] if mode == "hdam" else []), "-o", "-", "-t", "raw", str(freqs[0]), str(int(program) % 4)]
             hdradio.reset(freqs[0], int(program) % 4, am=mode == "hdam")
+        elif with_rds:
+            cmd = ["rtl_fm", "-M", "fm", "-s", "171000", "-A", "fast", "-f", str(freqs[0]), "-r", "171000", "-"]
+            rds.reset(freqs[0])
         else:
             cmd = ["rtl_fm", *MODES[mode], *[a for f in freqs for a in ("-f", str(f))], "-r", "48000",
                    "-l", str(int(squelch or (60 if len(freqs) > 1 else 0))), "-"]
         # (no input probing or buffering: ffmpeg otherwise spends ~4 s studying the raw audio before the first byte)
+        # from the multiplex: keep the audio (below 15 kHz) and de-emphasize it (75 us, a 2.1 kHz pole), as rtl_fm's wbfm does
+        mpx_filter = ["-af", "lowpass=f=15000,lowpass=f=2122:poles=1", "-ar", "48000"] if with_rds else []
         enc = ["ffmpeg", "-v", "error", "-fflags", "nobuffer", "-probesize", "32", "-analyzeduration", "0",
-               "-f", "s16le", "-ar", "44100" if hd else "48000", "-ac", "2" if hd else "1", "-i", "-",
-               "-c:a", "libmp3lame", "-b:a", "128k", "-flush_packets", "1", "-f", "mp3", "-"]
+               "-f", "s16le", "-ar", "44100" if hd else "171000" if with_rds else "48000", "-ac", "2" if hd else "1", "-i", "-",
+               *mpx_filter, "-c:a", "libmp3lame", "-b:a", "128k", "-flush_packets", "1", "-f", "mp3", "-"]
         with self.lock:
             self._stop()
             rtl = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE if hd else subprocess.DEVNULL)
             if hd:  # nrsc5's log is where the station's information comes from
                 threading.Thread(target=self._read_log, args=(rtl,), daemon=True).start()
-            mp3 = subprocess.Popen(enc, stdin=rtl.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-            rtl.stdout.close()
-            self.procs = (rtl, mp3)
+            if with_rds:
+                mp3 = subprocess.Popen(enc, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                red = subprocess.Popen(["redsea", "-r", "171000"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                threading.Thread(target=self._pump, args=(rtl, mp3, red), daemon=True).start()
+                threading.Thread(target=self._read_rds, args=(red,), daemon=True).start()
+                self.procs = (rtl, mp3, red)
+            else:
+                mp3 = subprocess.Popen(enc, stdin=rtl.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                rtl.stdout.close()
+                self.procs = (rtl, mp3)
             self.gen += 1
             self.tuned = {"freqs": freqs, "mode": mode, "label": label, "since": time.time()}
             return self.gen, mp3.stdout
+
+    @staticmethod
+    def _pump(rtl, mp3, red):
+        """The demodulated multiplex to ffmpeg (the sound) and, without ever holding the sound up, to redsea (RDS):
+        redsea gets whole chunks through a short queue and loses the oldest when it can't keep up."""
+        feed = queue.Queue(maxsize=64)
+
+        def to_redsea():
+            try:
+                while (chunk := feed.get()) is not None:
+                    red.stdin.write(chunk)
+                    red.stdin.flush()
+            except (OSError, ValueError):
+                pass
+
+        threading.Thread(target=to_redsea, daemon=True).start()
+        try:
+            while chunk := rtl.stdout.read(8192):  # (even-sized chunks: whole samples)
+                mp3.stdin.write(chunk)
+                mp3.stdin.flush()
+                try:
+                    feed.put_nowait(chunk)
+                except queue.Full:
+                    try:
+                        feed.get_nowait()
+                        feed.put_nowait(chunk)
+                    except (queue.Empty, queue.Full):
+                        pass
+        except (OSError, ValueError):
+            pass
+        finally:
+            feed.put(None)
+            for p in (mp3, red):
+                try:
+                    p.stdin.close()
+                except OSError:
+                    pass
+
+    @staticmethod
+    def _read_rds(proc):
+        for raw in proc.stdout:
+            try:
+                rds.ingest_line(raw.decode("utf-8", "replace").strip())
+            except ValueError:
+                pass
+        rds.stop()
 
     @staticmethod
     def _read_log(proc):

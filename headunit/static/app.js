@@ -2153,7 +2153,8 @@ if (home) api("/api/home", { json: home }).catch(() => {});  // the Pi's copy, i
 const radio = {
   info: null, tab: load("radioTab", "fm"), on: null,  // on: {f, freqs, mode, label, sub} while radio plays
   fm: load("fmStations", []), am: load("amStations", []), presets: load("radioPresets", []), weather: null, loaded: 0,
-  hd: load("radioHd", false), program: 0, hdSeen: load("hdSeen", {}),  // HD Radio on/off, which program (0 = HD1), stations known to have it (or not)
+  names: load("stationNames", {}),  // station names heard over RDS or HD, by frequency
+  hd: load("radioHd", true), program: 0, hdSeen: load("hdSeen", {}),  // HD Radio on/off, which program (0 = HD1), stations known to have it (or not)
   last: load("radioLast", { f: 98.5e6, mode: "wbfm" }),
 };
 const RADIO_STEP = { wbfm: 200e3, am: 10e3, nfm: 12.5e3, air: 25e3 };
@@ -2189,10 +2190,11 @@ function renderRadio() {
   const presets = radio.presets.filter((p) => (radio.tab === "fm" ? p.mode === "wbfm" : radio.tab === "am" ? p.mode === "am" : false));
   if (radio.tab === "fm" || radio.tab === "am") {
     if (radio.on?.hd) rows.push(...hdRows());
-    if (presets.length) rows.push(head("Presets"), ...presets.map((p) => chRow(p.label || freqText(p.f, p.mode), freqText(p.f, p.mode), p)));
+    else if (radio.on?.rds && (radio.on.rds.ps || radio.on.rds.radiotext)) rows.push(...rdsRows());
+    if (presets.length) rows.push(head("Presets"), ...presets.map((p) => chRow(p.mode === "wbfm" && radio.names[Math.round(p.f)] ? stationTitle(p.f) : p.label || freqText(p.f, p.mode), freqText(p.f, p.mode), p)));
     if (radio.tab === "fm") {
       rows.push(head("Stations", radio.fm.length ? "Scan again" : "Scan the band", radioScan));
-      if (radio.fm.length) rows.push(...radio.fm.map((s) => chRow(freqText(s.f, "wbfm"), `${s.db} dB above the noise`, { f: s.f, mode: "wbfm" })));
+      if (radio.fm.length) rows.push(...radio.fm.map((s) => chRow(stationTitle(s.f), `${radio.names[Math.round(s.f)] ? freqText(s.f, "wbfm") + " · " : ""}${s.db} dB above the noise${radio.hdSeen[`wbfm:${Math.round(s.f)}`] ? " · HD Radio" : ""}`, { f: s.f, mode: "wbfm", label: freqText(s.f, "wbfm") })));
       else rows.push(note("Tap Scan to find the stations you can receive here, or tune with − and +."));
     } else {
       rows.push(head("Stations", radio.am.length ? "Scan again" : "Scan the band", () => radioScan("am")));
@@ -2239,6 +2241,7 @@ function note(text) {
   d.textContent = text;
   return d;
 }
+const stationTitle = (f) => { const n = radio.names[Math.round(f)]; return n || freqText(f, "wbfm"); };
 function chRow(title, sub, ch, icon = "#i-radio") {
   const b = document.createElement("button");
   b.className = "list-item media-row" + (radio.on && radio.on.freqs.length === 1 && radio.on.f === ch.f && radio.on.mode === ch.mode ? " playing" : "");
@@ -2258,13 +2261,15 @@ async function tune({ freqs, mode, label, sub }) {
   const f = freqs[0], hdKey = `${mode}:${Math.round(f)}`;
   if (!radio.on || radio.on.f !== f) radio.program = 0;  // a new station starts on HD1
   // HD Radio (digital audio and the song and station information) when it's on and the station isn't known to lack it
-  const hd = radio.hd && (mode === "wbfm" || mode === "am") && freqs.length === 1 && radio.hdSeen[hdKey] !== false;
+  const hd = radio.hd && mode === "wbfm" && freqs.length === 1 && radio.hdSeen[hdKey] !== false;  // (AM HD is too weak to bother with)
   radio.on = { f, freqs, mode, label, hd, sub: sub || (freqs.length > 1 ? `${freqs.length} channels` : freqText(f, mode)) };
   if (freqs.length === 1) { radio.last = { f, mode }; save("radioLast", radio.last); }
   const qs = new URLSearchParams({ mode: hd ? (mode === "am" ? "hdam" : "hd") : mode, label, program: radio.program });
   for (const x of freqs) qs.append("f", Math.round(x));
   clearTimeout(hdTimer);
+  clearTimeout(rdsTimer);
   if (hd) { radio.on.meta = null; radio.on.tuneAt = Date.now(); hdTimer = setTimeout(watchHd, 2000); }
+  else if (mode === "wbfm" && freqs.length === 1) rdsTimer = setTimeout(watchRds, 2500);
   audio.src = `/api/radio/stream?${qs}`;
   audio.play().catch((e) => e.name !== "AbortError" && toast(`Can't tune: ${e.message}`));
   startVisualizer();
@@ -2278,6 +2283,7 @@ async function tune({ freqs, mode, label, sub }) {
 function radioStop() {
   if (!radio.on) return;
   clearTimeout(hdTimer);
+  clearTimeout(rdsTimer);
   radio.on = null;
   audio.pause();
   audio.removeAttribute("src");
@@ -2299,7 +2305,26 @@ function radioStep(dir) {  // next/previous while radio plays: the next preset o
   tune({ freqs: [next], mode, label: preset?.label || freqText(next, mode) });
 }
 // ---- HD Radio (hdradio.py): the decoder's view of the station, polled while an HD station plays ----
-let hdTimer = null;
+let hdTimer = null, rdsTimer = null;
+function rememberName(f, name) {
+  name = (name || "").trim();
+  if (name && radio.names[Math.round(f)] !== name) { radio.names[Math.round(f)] = name; save("stationNames", radio.names); }
+}
+async function watchRds() {  // an analog FM station's name and text (rds.py), while it plays
+  const on = radio.on;
+  if (!on || on.hd || on.mode !== "wbfm" || on.freqs.length !== 1) return;
+  const r = await api("/api/radio/rds").catch(() => null);
+  if (radio.on !== on) return;
+  if (r?.active || r?.ps) {
+    on.rds = r;
+    if (r.ps) rememberName(on.f, r.ps);
+    const line = r.radiotext || r.ps;
+    if (line) { bind("track-title", line); bind("track-sub", [r.ps, r.prog_type].filter(Boolean).join(" · ")); }
+    paintDial();
+    if (currentView === "radio" && (radio.tab === "fm" || radio.tab === "am")) renderRadio();
+  }
+  rdsTimer = setTimeout(watchRds, 4000);
+}
 function hdSub(m) {
   if (!m) return "HD Radio · looking for the digital signal…";
   if (!m.synced && !m.title && !m.station) return m.waiting_s > 3 ? `HD Radio · looking for the digital signal… ${m.waiting_s} s` : "HD Radio · looking for the digital signal…";
@@ -2314,7 +2339,8 @@ async function watchHd() {
   const key = `${on.mode}:${Math.round(on.f)}`;
   if (m?.synced) {
     if (radio.hdSeen[key] !== true) { radio.hdSeen[key] = true; save("hdSeen", radio.hdSeen); }
-  } else if (Date.now() - on.tuneAt > 25000) {  // no digital signal: this station doesn't have HD (or it's too weak here); play the analog one
+    if (m.station) rememberName(on.f, m.station);
+  } else if (Date.now() - on.tuneAt > 15000) {  // no digital signal: this station doesn't have HD (or it's too weak here); play the analog one
     radio.hdSeen[key] = false;
     save("hdSeen", radio.hdSeen);
     toast(`No HD Radio signal on ${freqText(on.f, on.mode)}: playing the analog station`, 4000);
@@ -2324,6 +2350,13 @@ async function watchHd() {
   paintDial();
   if (currentView === "radio" && (radio.tab === "fm" || radio.tab === "am")) renderRadio();
   hdTimer = setTimeout(watchHd, m?.synced ? 4000 : 1500);
+}
+function rdsRows() {  // an analog FM station's RDS: name, text, type, call sign
+  const r = radio.on.rds, kv = (k, v) => v ? `<div class="kv-row"><span>${k}</span><span>${escapeHtml(v)}</span></div>` : "";
+  const card = document.createElement("div");
+  card.className = "card hd-card";
+  card.innerHTML = [kv("Station", r.ps), kv("Text", r.radiotext), kv("Type", r.prog_type), kv("Call sign", r.callsign), r.ta ? kv("Traffic", "announcement now") : ""].join("");
+  return [head("Station information (RDS)"), card];
 }
 function hdRows() {
   const m = radio.on?.meta, rows = [head("HD Radio")];
@@ -2355,11 +2388,13 @@ function paintDial() {
   const x = fmtFreq(f, mode);
   $("#radio-freq").textContent = radio.on?.freqs.length > 1 ? "Scan" : x.v;
   $("#radio-unit").textContent = radio.on?.freqs.length > 1 ? "" : x.u;
-  const m = radio.on?.hd ? radio.on.meta : null;
-  $("#radio-label").textContent = radio.on ? (m?.title ? `${m.title}${m.artist ? ` — ${m.artist}` : ""}` : radio.on.label) : "Not playing";
-  $("#radio-sub").textContent = radio.on ? (radio.on.hd ? hdSub(m) : radio.on.sub) : `${{ wbfm: "FM", am: "AM", nfm: "Narrow FM", air: "Aviation AM" }[mode]} · tap play to listen`;
+  const m = radio.on?.hd ? radio.on.meta : null, r = radio.on && !radio.on.hd ? radio.on.rds : null;
+  const name = radio.on?.mode === "wbfm" ? radio.names[Math.round(radio.on.f)] : null;
+  $("#radio-label").textContent = radio.on ? (m?.title ? `${m.title}${m.artist ? ` — ${m.artist}` : ""}` : r?.radiotext || name || radio.on.label) : "Not playing";
+  $("#radio-sub").textContent = radio.on ? (radio.on.hd ? hdSub(m) : r?.ps || name ? [r?.ps || name, r?.prog_type, r?.callsign, r?.ta ? "traffic announcement" : ""].filter(Boolean).join(" · ") : radio.on.sub)
+    : `${{ wbfm: "FM", am: "AM", nfm: "Narrow FM", air: "Aviation AM" }[mode]} · tap play to listen`;
   $("#radio-hd").classList.toggle("on", radio.hd);
-  $("#radio-hd").hidden = !(mode === "wbfm" || mode === "am");
+  $("#radio-hd").hidden = mode !== "wbfm";
   $("#radio-play-icon").setAttribute("href", radio.on ? "#i-pause" : "#i-play");
   $("#radio-star").classList.toggle("on", radio.presets.some((p) => p.f === f && p.mode === mode));
 }
@@ -4668,7 +4703,7 @@ const ACTIONS = {
     save("radioHd", radio.hd);
     toast(radio.hd ? "HD Radio on: digital audio and song info when a station has it" : "HD Radio off", 2200);
     const o = radio.on;
-    if (o && (o.mode === "wbfm" || o.mode === "am")) tune({ freqs: o.freqs, mode: o.mode, label: o.label }); else paintDial();
+    if (o && o.mode === "wbfm") tune({ freqs: o.freqs, mode: o.mode, label: o.label }); else paintDial();
   },
   "cap-next": () => showCapImage(1),
   "cap-prev": () => showCapImage(-1),

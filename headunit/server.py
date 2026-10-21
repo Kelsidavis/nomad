@@ -56,6 +56,7 @@ import sdr  # noqa: E402
 import tpms  # noqa: E402
 import fuel  # noqa: E402
 import hdradio  # noqa: E402
+import rds  # noqa: E402
 import display  # noqa: E402
 import drives  # noqa: E402
 
@@ -843,6 +844,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.file(radio.capture_file(q["id"], q["name"]), "max-age=86400")
             if path == "/api/radio/stream":  # ?f=hz[&f=hz...]&mode=wbfm|am|nfm|air[&sq=][&label=]
                 return self.radio_stream(multi.get("f", []), q.get("mode", "wbfm"), q.get("sq", 0), q.get("label", ""), q.get("program", 0))
+            if path == "/api/radio/rds":  # an analog FM station's name and text (RDS)
+                return self.send(200, rds.status())
             if path == "/api/radio/hd":  # what the HD Radio decoder knows: station, song, programs, signal
                 return self.send(200, hdradio.status())
             if path.startswith("/wx/radar/"):  # /wx/radar/z/x/y.png

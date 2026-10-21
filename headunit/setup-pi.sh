@@ -38,6 +38,16 @@ if ! command -v nrsc5 >/dev/null; then
     rm -rf "$B"
 fi
 
+echo "== RDS decoder (redsea, built here: not in Debian)"
+if ! command -v redsea >/dev/null; then
+    B=$(mktemp -d)
+    apt-get install -y -qq libliquid-dev nlohmann-json3-dev libsndfile1-dev meson ninja-build >/dev/null
+    git clone -q --depth 1 https://github.com/windytan/redsea.git "$B/redsea" && meson setup "$B/redsea/build" "$B/redsea" >/dev/null \
+        && ninja -C "$B/redsea/build" >/dev/null && install -m 755 "$B/redsea/build/redsea" /usr/local/bin/redsea \
+        || echo "(redsea didn't build: FM station names stay off)"
+    rm -rf "$B"
+fi
+
 echo "== mic HAT (WM8960)"
 C=/boot/firmware/config.txt
 grep -q '^dtoverlay=wm8960-soundcard' $C || printf '\n[all]\ndtparam=i2c_arm=on\ndtparam=i2s=on\ndtoverlay=wm8960-soundcard\n' >> $C
