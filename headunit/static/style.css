@@ -800,3 +800,5 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 .hd-card { margin: 0.4rem 0; }
 .hd-progs { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0.4rem 0 0.2rem; }
 .hd-progs .btn { min-height: 2.6rem; } .hd-progs .btn.on { background: var(--accent); color: var(--accent-text); }
+/* "Waiting for GPS" steps up out of the way of the now-playing strip when that shows over the map */
+body.panel-hidden[data-music] #no-fix { bottom: 6.6rem; }
