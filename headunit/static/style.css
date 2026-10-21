@@ -196,8 +196,9 @@ svg { width: 1.5rem; height: 1.5rem; fill: currentColor; flex: none; }
 .map-btn { width: 3.8rem; height: 3.8rem; border-radius: 50%; background: var(--card); box-shadow: var(--shadow); display: grid; place-items: center; }
 .map-btn svg { width: 1.8rem; height: 1.8rem; }
 #recenter { background: var(--accent); color: var(--accent-text); }
-#no-fix { position: absolute; left: 50%; bottom: 1.8rem; transform: translateX(-50%); z-index: 500; background: var(--card); padding: 0.7rem 1.2rem;
-  border-radius: 1.4rem; color: var(--text-2); box-shadow: var(--shadow); font-size: 0.95rem; }
+#no-fix { position: absolute; left: 50%; bottom: 1.8rem; transform: translateX(-50%); z-index: 500; background: var(--card);
+  border-radius: 1.4rem; color: var(--text-2); font-size: 0.85rem; opacity: 0.75; padding: 0.45rem 0.9rem; transition: opacity 1.2s; }
+#no-fix.quiet { opacity: 0; pointer-events: none; }
 
 /* ---- overlays ---- */
 .overlay { position: fixed; inset: 0; z-index: 2000; background: color-mix(in srgb, var(--bg) 94%, transparent); }

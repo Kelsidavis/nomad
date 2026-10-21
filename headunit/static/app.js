@@ -457,8 +457,22 @@ function followView(ll) {
   });
 }
 
+// "Waiting for GPS" is a quiet note: it shows for a few seconds after the fix is lost (or at start) and then fades; the rail's
+// pin stays red meanwhile, and the note returns the next time a fix has come and gone.
+let noFixTimer = null, hadFix = false;
+function paintNoFix(p) {
+  const el = $("#no-fix");
+  if (p) { hadFix = true; clearTimeout(noFixTimer); noFixTimer = null; el.hidden = true; el.classList.remove("quiet"); return; }
+  if (!el.hidden || noFixTimer) return;  // already showing, or already faded for this stretch without a fix
+  if (el.dataset.shown && !hadFix) return;
+  el.dataset.shown = "1";
+  hadFix = false;
+  el.hidden = false;
+  el.classList.remove("quiet");
+  noFixTimer = setTimeout(() => el.classList.add("quiet"), 6000);
+}
 function updatePosition(p) {
-  $("#no-fix").hidden = !!p;
+  paintNoFix(p);
   if (!p || !map) return;
   const ll = [p.lon, p.lat];
   const moving = (p.speed_mps ?? 0) > 1.5;
