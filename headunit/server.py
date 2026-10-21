@@ -1002,11 +1002,13 @@ class Handler(BaseHTTPRequestHandler):
                                              headers={"Content-Type": "application/json"})
                 with urllib.request.urlopen(req, timeout=10) as r:
                     return self.send(200, json.load(r))
-            if path in ("/api/intent", "/api/chat"):
+            if path in ("/api/intent", "/api/chat", "/api/ui-plan"):
                 body = self.body_json()
                 try:
                     if path == "/api/intent":
                         return self.send(200, intent.command(body["text"]))
+                    if path == "/api/ui-plan":  # {text, state}: what to change on the screen, to be checked and done by the page
+                        return self.send(200, intent.ui_plan(str(body["text"])[:300], body.get("state")))
                     return self.send(200, intent.chat(body["text"], _with_engine(str(body.get("context", ""))[:400])))
                 except (OSError, urllib.error.URLError) as e:
                     return self.send(503, {"error": f"voice model not running: {e}"})

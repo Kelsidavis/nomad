@@ -778,3 +778,8 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 #bright-night-row[hidden] { display: none; }
 .setting.stack .seg { flex-wrap: wrap; border-radius: 1.4rem; }
 .setting.stack .seg button { flex: 1 1 auto; }
+
+/* the assistant's changes to the screen: what was done, with an Undo */
+.bubble.acted { border-left: 3px solid var(--accent); }
+.bubble.acted .bubble-text::before { content: "✓ "; color: var(--accent); font-weight: 700; }
+.bubble.acted .btn { margin-top: 0.5rem; min-height: 2.4rem; }

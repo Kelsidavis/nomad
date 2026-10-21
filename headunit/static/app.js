@@ -1660,6 +1660,150 @@ function pickAlbumColor(url) {
   img.src = url;
 }
 
+// ---- the assistant changing the interface (intent.py ui_plan) ----
+// The model only proposes changes; each one is checked against these tables and done through the same code the
+// buttons use, so it can do nothing the screen couldn't. Each change can be undone ("undo that", or the button).
+const UI_SETTINGS = { units: ["imperial", "metric"], theme: ["auto", "dark", "light"], clock: ["12", "24"], orient: ["heading", "north"],
+  prompts: ["on", "off"], accent: ["blue", "teal", "green", "orange", "red", "purple", "pink", "album"],
+  viz: ["bars", "mirror", "wave", "scope", "ring", "auto", "off"], vizColor: ["album", "accent", "rainbow"], speedWarn: ["show", "say", "off"], notify: ["show", "hide", "off"] };
+const UI_SETTING_NAMES = { units: "Units", theme: "Theme", clock: "Clock", orient: "Map while navigating", prompts: "Spoken directions", accent: "Accent color",
+  viz: "Visualizer", vizColor: "Visualizer color", speedWarn: "Speed limit", notify: "Phone notifications" };
+const UI_LAYERS = ["satellite", "radar", "hillshade", "relief", "contours", "3d", "tsunami", "quakes", "aircraft", "ships"];
+const UI_LAYER_NAMES = { satellite: "Satellite", radar: "Radar", hillshade: "Shaded relief", relief: "Elevation colors", contours: "Contours", "3d": "3D terrain",
+  tsunami: "Tsunami zones", quakes: "Earthquakes", aircraft: "Aircraft", ships: "Ships" };
+const UI_VIEWS = ["home", "media", "weather", "news", "radio", "assistant", "vehicle", "settings", "emergency", "help"];
+const UI_RADIO_TABS = { fm: "fm", am: "am", noaa: "weather", weather: "weather", scanner: "scanner", sats: "sats", satellites: "sats", air: "air", aircraft: "air", ships: "ships", mesh: "mesh", sdr: "sdr", listening: "sdr" };
+const UI_LISTENERS = { ais: "Ships (AIS)", tpms: "Tire sensors", nwr: "Emergency broadcasts", acars: "Aircraft messages", adsb: "Aircraft (ADS-B)" };
+const UI_RUN_REFUSED = /\b(mesh|text|send|call|delete|erase|reset|clear|reboot|shut ?down|power off|forget|unpair|factory)\b/i;
+const layerOn = (k) => (k === "satellite" ? satellite : k === "radar" ? radarOn : !!terrain[k]);
+const uiUndos = new Map();
+let uiUndoId = 0;
+function uiState() {  // what the planner may need to know for "a bit louder" or "toggle the radar"
+  return { screen: currentView, theme: settings.theme, units: settings.units, clock: settings.clock, viz: settings.viz, accent: settings.accent,
+    brightness: bright ? { now: bright.level, day: bright.day, night: bright.night, auto: bright.auto } : null,
+    volume: navVol.level, muted: navVol.muted, layers: UI_LAYERS.filter(layerOn) };
+}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// Relative ("+20", "-10") or absolute ("60") number against a current value; null when it isn't a number.
+function uiNumber(value, current) {
+  const m = String(value).trim().match(/^([+-])?\s*(\d{1,3})(?:\s*%)?$/);
+  if (!m) return null;
+  return m[1] ? current + (m[1] === "-" ? -1 : 1) * Number(m[2]) : Number(m[2]);
+}
+async function uiApply(c) {
+  const key = String(c.key || "").toLowerCase().trim(), value = String(c.value || "").toLowerCase().trim();
+  switch (c.do) {
+    case "setting": {
+      const allowed = UI_SETTINGS[Object.keys(UI_SETTINGS).find((k) => k.toLowerCase() === key)];
+      const name = Object.keys(UI_SETTINGS).find((k) => k.toLowerCase() === key);
+      if (!allowed || !allowed.includes(value)) throw new Error(`${key} can't be ${value || "empty"}`);
+      const before = settings[name], btn = (v) => $(`.seg[data-setting="${name}"] button[data-v="${v}"]`);
+      if (!btn(value)) throw new Error(`no setting ${name}`);
+      btn(value).click();
+      return { text: `${UI_SETTING_NAMES[name]}: ${value}`, undo: () => before != null && btn(before)?.click() };
+    }
+    case "brightness": {
+      if (!bright) await loadBrightness();
+      if (!bright) throw new Error("brightness isn't available");
+      const before = { day: bright.day, night: bright.night, auto: bright.auto };
+      const night = bright.auto && bright.period === "night";
+      let patch;
+      if (key === "auto") patch = { auto: ["on", "true", "yes"].includes(value) };
+      else {
+        const which = key === "night" ? "night" : key === "day" ? "day" : night ? "night" : "day";
+        const n = uiNumber(value, bright[which]);
+        if (n == null) throw new Error(`brightness ${value || "empty"} isn't a number`);
+        patch = { [which]: clamp(Math.round(n), 5, 100) };
+      }
+      await loadBrightness(patch);
+      return { text: key === "auto" ? `Dim at night: ${patch.auto ? "on" : "off"}` : `Brightness: ${bright.level}%`, undo: () => loadBrightness(before) };
+    }
+    case "volume": {
+      if (navVol.level == null) Object.assign(navVol, await api("/api/volume").catch(() => ({})));
+      const before = { level: navVol.level, mute: !!navVol.muted };
+      if (key === "mute") await volAct({ mute: value === "toggle" ? "toggle" : ["on", "true", "yes"].includes(value) });
+      else if (key === "step" || key === "level") {
+        const n = uiNumber(value, navVol.level ?? 50);
+        if (n == null) throw new Error(`volume ${value || "empty"} isn't a number`);
+        await volAct({ level: clamp(Math.round(key === "step" && !/^[+-]/.test(value) ? (navVol.level ?? 50) + n : n), 0, 100) });
+      } else throw new Error(`no volume ${key}`);
+      return { text: navVol.muted ? "Muted" : `Volume: ${navVol.level}%`, undo: () => volAct({ level: before.level, mute: before.mute }) };
+    }
+    case "show": {
+      if (!UI_VIEWS.includes(key)) throw new Error(`no screen ${key}`);
+      const before = currentView, tab = key === "radio" ? UI_RADIO_TABS[value] : null;
+      showView(key);
+      if (tab) $(`#radio-tabs [data-tab="${tab}"]`)?.click();
+      return { text: `Opened ${key === "radio" && tab ? `Radio · ${tab}` : key}`, undo: () => showView(before) };
+    }
+    case "layer": {
+      if (!UI_LAYERS.includes(key)) throw new Error(`no layer ${key}`);
+      const want = value === "toggle" ? !layerOn(key) : ["on", "true", "show", "yes"].includes(value);
+      const had = layerOn(key);
+      if (want !== had) toggleLayer(key);
+      return { text: `${UI_LAYER_NAMES[key]}: ${want ? "on" : "off"}`, undo: () => layerOn(key) !== had && toggleLayer(key) };
+    }
+    case "map": {
+      if (key === "zoom_in") { ACTIONS["zoom-in"](); return { text: "Zoomed in", undo: () => ACTIONS["zoom-out"]() }; }
+      if (key === "zoom_out") { ACTIONS["zoom-out"](); return { text: "Zoomed out", undo: () => ACTIONS["zoom-in"]() }; }
+      if (key === "recenter") { ACTIONS.recenter(); return { text: "Centered on the truck" }; }
+      if (key === "panel") {
+        const hidden = document.body.classList.contains("panel-hidden");
+        setPanel(value === "hide", false);
+        return { text: `Side panel: ${value === "hide" ? "hidden" : "shown"}`, undo: () => setPanel(hidden, false) };
+      }
+      throw new Error(`no map ${key}`);
+    }
+    case "listener": {
+      if (!UI_LISTENERS[key] || !["on", "off"].includes(value)) throw new Error(`can't set ${key} ${value}`);
+      const on = value === "on";
+      const set = async (to) => {
+        if (key === "adsb") await api("/api/adsb", { json: { always: to } });
+        else await api("/api/sdr", { json: { name: key, enabled: to } });
+        loadSdr(); if (key === "tpms") loadTpms();
+      };
+      const was = key === "adsb" ? (await api("/api/adsb").catch(() => ({}))).always : (sdrInfo?.slices.find((x) => x.name === key)?.enabled ?? true);
+      await set(on);
+      return { text: `${UI_LISTENERS[key]}: ${on ? "listening" : "off"}`, undo: () => set(!!was) };
+    }
+    case "run": {
+      if (!value || UI_RUN_REFUSED.test(value)) throw new Error("that one needs to be said out loud");
+      const r = await runCommand(value);
+      return { text: typeof r === "string" && r ? r : `Done: ${value}` };
+    }
+  }
+  throw new Error(`unknown change ${c.do}`);
+}
+// Ask the model what to change for `text`, do it, and say what happened; null when it changes nothing (so the caller carries on as chat).
+async function uiPlan(text) {
+  let plan;
+  try { plan = await api("/api/ui-plan", { json: { text, state: uiState() } }); } catch { return null; }
+  const done = [], undos = [];
+  for (const c of plan.changes || []) {
+    try {
+      const r = await uiApply(c);
+      done.push(r.text);
+      if (r.undo) undos.push(r.undo);
+    } catch (e) {
+      done.push(`Couldn't: ${e.message}`);
+    }
+  }
+  if (!done.length) return null;
+  let id = 0;
+  if (undos.length) { id = ++uiUndoId; uiUndos.set(id, undos); for (const k of [...uiUndos.keys()].slice(0, -10)) uiUndos.delete(k); }
+  return { text: done.join(". "), id };
+}
+async function uiUndo(id = [...uiUndos.keys()].pop()) {
+  const undos = uiUndos.get(id);
+  if (!undos) return "Nothing to undo";
+  uiUndos.delete(id);
+  for (const u of undos.reverse()) await u();
+  renderChat();
+  return "Undone";
+}
+// Requests worth a planning round (a quick filter, so ordinary chat doesn't wait for it).
+const UI_GATE = /\b(set|change|switch|turn|make|show|open|go to|hide|enable|disable|toggle|dim|brighten|brighter|dimmer|darker|lighter|mute|unmute|louder|quieter|increase|decrease|use|put|display|zoom|volume|brightness|theme|layer|map|screen|units|metric|imperial|dark mode|light mode|accent|visualizer|listen|stop|start|navigate|directions|take me|play|pause|skip|next|previous|timer|remind|undo|how far|range|news|ships?|boats?|vessels?|tires?|tyres?|pressure|emergency|alerts?|broadcasts?|weather|rain|forecast|temperature|speed limit|how fast|eta|how much farther|where are we|gas|fuel|engine|codes|planes?|aircraft|mpg|mileage)\b/i;
+
 // ---- assistant: talk to Gemma directly, its thinking streamed as it goes (server.py /api/assistant) ----
 const chatLog = { msgs: load("chatLog", []), think: load("chatThink", true), speak: load("chatSpeak", false), busy: null };
 function renderChat() {
@@ -1695,6 +1839,17 @@ function chatBubble(m, i) {
   if (m.live && !m.think && !m.content) body.innerHTML = `<span class="typing"><i></i><i></i><i></i></span>`;
   d.append(body);
   if (m.error) d.classList.add("error");
+  if (m.acted) {
+    d.classList.add("acted");
+    if (uiUndos.has(m.acted)) {
+      const u = document.createElement("button");
+      u.className = "btn";
+      u.textContent = "Undo";
+      u.dataset.action = "ui-undo";
+      u.dataset.id = m.acted;
+      d.append(u);
+    }
+  }
   return d;
 }
 // Just enough formatting for chat answers: **bold**, `code`, bullet and numbered lists, paragraphs.
@@ -1715,6 +1870,18 @@ async function askAssistant(text) {
   chatLog.msgs.push(reply);
   const ctrl = (chatLog.busy = new AbortController());
   renderChat();
+  if (UI_GATE.test(text)) {  // a request to change something? do it, and say what was done
+    const u = /^undo\b/i.test(text) ? { text: await uiUndo(), id: 0 } : await uiPlan(text);
+    if (u) {
+      Object.assign(reply, { content: u.text, live: false, acted: u.id || -1 });
+      chatLog.busy = null;
+      chatLog.msgs = chatLog.msgs.slice(-40);
+      save("chatLog", chatLog.msgs);
+      renderChat();
+      if (chatLog.speak) speak(u.text);
+      return;
+    }
+  }
   const t0 = Date.now();
   let thinkEnd = null, paint = 0;
   try {
@@ -3748,6 +3915,7 @@ const COMMANDS = [
   ["Time", ["set a timer for 10 minutes", "remind me to call Mom in 20 minutes", "how much time is left", "cancel the timer", "what time is it"]],
   ["Radio and sky", ["what plane is that", "tell the mesh I'm on my way", "read mesh messages"]],
   ["News and safety", ["read the news", "will it rain", "what's the temperature", "evacuate", "nearest hospital", "nearest shelter"]],
+  ["Change the screen", ["switch to metric", "dark mode", "brightness to 50", "make it dimmer", "turn on the radar", "show the ships on the map", "volume down a bit", "open the weather", "turn off the tire listening", "undo that"]],
   ["Anything", ["repeat that", "show the radio", "dark mode", "thank you"]],
 ];
 function renderHelp() {
@@ -4080,6 +4248,7 @@ async function runCommand(raw, fromModel = false) {
     nudgeVolume(-100);
     return "Muted";
   }
+  if (/^undo( that| it| the last (change|thing))?$/.test(text)) return uiUndo();
   if (/^unmute( the)?( music| sound| audio)?$|^sound on$/.test(text)) {
     const el = $('[data-bind="volume"]');
     nudgeVolume(load("unmuteLevel", 50) - Number(el.value || 0));
@@ -4304,7 +4473,10 @@ async function askModel(raw) {
   }
   const clean = (x) => (x || "").toLowerCase().replace(/[.,!?]/g, "").trim();
   const phrase = MODEL_PHRASES[r.action]?.(clean(r.query), clean(r.when));
-  return phrase ? runCommand(phrase, true) : `Didn't understand “${raw.trim()}”`;
+  if (phrase) return runCommand(phrase, true);
+  const u = UI_GATE.test(raw) ? await uiPlan(raw) : null;  // not one of the fixed commands: perhaps a change to the screen
+  if (u) { speak(u.text); return u.text; }
+  return `Didn't understand “${raw.trim()}”`;
 }
 
 async function lockClip() {
@@ -4341,6 +4513,7 @@ const ACTIONS = {
   "tpms-assign": async (btn) => { tpmsInfo = await api("/api/tpms/assign", { json: { key: btn.dataset.key, wheel: btn.dataset.wheel } }).catch((e) => (toast(e.message), tpmsInfo)); renderTpms(); },
   "tpms-toggle": async () => { await api("/api/sdr", { json: { name: "tpms", enabled: !tpmsInfo?.enabled } }).catch(() => null); await loadTpms(); },
   "tpms-forget": async (btn) => { tpmsInfo = await api("/api/tpms/forget", { json: { key: btn.dataset.key } }).catch(() => tpmsInfo); renderTpms(); },
+  "ui-undo": async (btn) => { toast(await uiUndo(Number(btn.dataset.id)), 1500); },
   "chat-try": (btn) => askAssistant(btn.dataset.q),
   "nwr-open": () => { $("#nwr-banner").hidden = true; showView("radio"); radio.tab = "sdr"; save("radioTab", "sdr"); renderRadio(); loadSdr(); },
   "nwr-dismiss": () => { $("#nwr-banner").hidden = true; },

@@ -112,6 +112,49 @@ def chat(text, context="", timeout=30, llm=LLM):
     return {"reply": reply, "llm_s": round(time.time() - t, 2)}
 
 
+# The assistant changing the interface for the driver (app.js uiPlan runs what comes back, only from its own whitelist)
+UI_DO = ["setting", "brightness", "volume", "show", "layer", "map", "listener", "run"]
+UI_SYSTEM = """You turn a request to change a car head unit's screen or settings into a short list of changes.
+Each change has do, key and value:
+- setting: key and value, one of: units (imperial, metric); theme (auto, dark, light); clock (12, 24); orient (heading, north: the map while navigating);
+  prompts (on, off: spoken directions); accent (blue, teal, green, orange, red, purple, pink, album); viz (bars, mirror, wave, scope, ring, auto, off: the music visualizer; auto = rotate);
+  vizColor (album, accent, rainbow); speedWarn (show, say, off); notify (show, hide, off: phone notifications).
+- brightness: key day, night, current or auto. value a number 5-100, or +20 or -20 for brighter or dimmer; for auto, on or off.
+- volume: key level (value 0-100), step (value +10 or -10), or mute (value on, off or toggle).
+- show: open a screen. key one of home, media, weather, news, radio, assistant, vehicle, settings, emergency, help. For radio, value may be one of fm, am, noaa, scanner, sats, air, ships, mesh, sdr (Listening); else "".
+- layer: a map layer. key one of satellite, radar, hillshade, relief, contours, 3d, tsunami, quakes, aircraft, ships. value on, off or toggle.
+- map: key zoom_in, zoom_out, recenter or panel (value show or hide: the side panel).
+- listener: the SDR radio listening. key one of ais (ships), tpms (tire sensors), nwr (emergency broadcasts), acars (aircraft messages), adsb (aircraft). value on or off.
+- run: anything else the driver can do or ask by voice, as the words they would say: navigating, music, timers, and the questions the unit answers about this truck and trip (how far can I go, any ships nearby, what's my tire pressure, any emergency alerts, will it rain, what's the speed limit). key "", value the words ("play something chill", "navigate home", "set a timer for 10 minutes", "any ships nearby").
+Rules: answer with the changes the request asks for and nothing more. General chat, or a question about anything other than this unit, truck and trip, gives an empty list.
+Keep key and value exactly as written above. "make it darker" or "dimmer" is brightness current -20; "dark mode" is setting theme dark.
+Use the current state when a request depends on it ("toggle the radar", "a bit louder").
+Examples: "switch to metric" -> setting units metric. "night mode" -> setting theme dark. "turn the volume down a bit" -> volume step -10.
+"show me the aircraft" -> show radio air, and layer aircraft on. "turn off the tire listening" -> listener tpms off.
+"open the weather" -> show weather. "full brightness" -> brightness current 100. "mute" -> volume mute on.
+Reply with JSON only."""
+UI_SCHEMA = {"type": "object", "properties": {"changes": {"type": "array", "maxItems": 4, "items": {
+    "type": "object", "properties": {"do": {"type": "string", "enum": UI_DO}, "key": {"type": "string", "maxLength": 24},
+                                     "value": {"type": "string", "maxLength": 80}},
+    "required": ["do", "key", "value"], "additionalProperties": False}}}, "required": ["changes"], "additionalProperties": False}
+
+
+def ui_plan(text, state=None, timeout=25, llm=LLM):
+    """{"changes": [{"do", "key", "value"}], "llm_s"} for a request to change the interface. app.js checks every change
+    against its own whitelist before doing anything, so this only proposes. Raises OSError when llama-server is down."""
+    t = time.time()
+    user = f"Current state: {json.dumps(state or {}, separators=(',', ':'))[:700]}\nRequest: {text}"
+    raw = _complete([{"role": "system", "content": UI_SYSTEM}, {"role": "user", "content": user}], 160, timeout, llm,
+                    response_format={"type": "json_schema", "json_schema": {"name": "changes", "schema": UI_SCHEMA}})
+    try:
+        got = json.loads(raw).get("changes") or []
+    except (ValueError, AttributeError):
+        got = []
+    changes = [{"do": str(c.get("do")), "key": str(c.get("key", "")).strip()[:24], "value": str(c.get("value", "")).strip()[:80]}
+               for c in got if isinstance(c, dict) and c.get("do") in UI_DO][:4]
+    return {"changes": changes, "llm_s": round(time.time() - t, 2)}
+
+
 ASSISTANT_SYSTEM = """You are the assistant on a pickup truck's head unit, in the Assistant tab: the driver or a
 passenger is typing or talking to you directly and can read your answer on screen. Be genuinely helpful and
 friendly. Keep answers short unless asked for detail; plain text with simple lists is fine. You run fully offline on
