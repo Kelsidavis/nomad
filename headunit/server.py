@@ -55,6 +55,7 @@ import nwr  # noqa: E402
 import sdr  # noqa: E402
 import tpms  # noqa: E402
 import fuel  # noqa: E402
+import hdradio  # noqa: E402
 import display  # noqa: E402
 import drives  # noqa: E402
 
@@ -841,7 +842,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/radio/capture":  # ?id=<capture folder>&name=<file in it>
                 return self.file(radio.capture_file(q["id"], q["name"]), "max-age=86400")
             if path == "/api/radio/stream":  # ?f=hz[&f=hz...]&mode=wbfm|am|nfm|air[&sq=][&label=]
-                return self.radio_stream(multi.get("f", []), q.get("mode", "wbfm"), q.get("sq", 0), q.get("label", ""))
+                return self.radio_stream(multi.get("f", []), q.get("mode", "wbfm"), q.get("sq", 0), q.get("label", ""), q.get("program", 0))
+            if path == "/api/radio/hd":  # what the HD Radio decoder knows: station, song, programs, signal
+                return self.send(200, hdradio.status())
             if path.startswith("/wx/radar/"):  # /wx/radar/z/x/y.png
                 z, x, y = (int(v) for v in path[len("/wx/radar/"):].removesuffix(".png").split("/"))
                 return self.send(200, radio.radar_tile(z, x, y, offline=not network.allowed("ask")), "image/png", "max-age=240")
@@ -1153,6 +1156,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, radio.save_settings(self.body_json().get("auto")))
             if path == "/api/radio/fmscan":
                 return self.send(200, {"stations": radio.fm_scan()})
+            if path == "/api/radio/amscan":
+                try:
+                    return self.send(200, {"stations": radio.am_scan()})
+                except OSError as e:
+                    return self.send(503, {"error": str(e)})
             if path == "/api/dashcam/lock":
                 return self.send(200, phone.dashcam_lock("headunit"))
             return self.send(404, {"error": "not found"})
@@ -1221,10 +1229,10 @@ class Handler(BaseHTTPRequestHandler):
             except OSError:
                 pass
 
-    def radio_stream(self, freqs, mode, squelch, label):
+    def radio_stream(self, freqs, mode, squelch, label, program=0):
         """The tuned station as an endless MP3; the tuner stops when the page lets go of it."""
         try:
-            gen, out = radio.tuner.start(freqs, mode, squelch, label)
+            gen, out = radio.tuner.start(freqs, mode, squelch, label, program)
         except (OSError, ValueError) as e:
             return self.send(503, {"error": str(e)})
         self.send_response(200)

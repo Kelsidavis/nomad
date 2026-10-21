@@ -28,6 +28,16 @@ if ! command -v acarsdec >/dev/null; then
     rm -rf "$B"
 fi
 
+echo "== HD Radio decoder (nrsc5, built here: not in Debian)"
+if ! command -v nrsc5 >/dev/null; then
+    B=$(mktemp -d)
+    apt-get install -y -qq autoconf automake libtool libao-dev libfftw3-dev >/dev/null
+    git clone -q --depth 1 https://github.com/theori-io/nrsc5.git "$B/nrsc5" && cmake -S "$B/nrsc5" -B "$B/nrsc5/build" -DCMAKE_BUILD_TYPE=Release -DUSE_NEON=ON -DUSE_COLOR=OFF >/dev/null \
+        && make -C "$B/nrsc5/build" -j2 >/dev/null && make -C "$B/nrsc5/build" install >/dev/null && ldconfig \
+        || echo "(nrsc5 didn't build: HD Radio stays off)"
+    rm -rf "$B"
+fi
+
 echo "== mic HAT (WM8960)"
 C=/boot/firmware/config.txt
 grep -q '^dtoverlay=wm8960-soundcard' $C || printf '\n[all]\ndtparam=i2c_arm=on\ndtparam=i2s=on\ndtoverlay=wm8960-soundcard\n' >> $C

@@ -16,6 +16,8 @@ import threading
 import time
 import urllib.request
 
+import hdradio
+
 DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit"))
 TLE = DATA / "tle.txt"
 FORECAST = DATA / "forecast.json"
@@ -34,6 +36,7 @@ MODES = {
     "am": ["-M", "am", "-s", "24000", "-E", "direct2"],  # broadcast AM: direct sampling, Q branch (below 28.8 MHz)
     "nfm": ["-M", "fm", "-s", "12500"],                 # NOAA weather, public safety, marine, ham
     "air": ["-M", "am", "-s", "12500"],                 # aviation is AM
+    "hd": [], "hdam": [],                               # HD Radio (hdradio.py): nrsc5 decodes it in place of rtl_fm
 }
 
 def _ch(group, name, mhz, mode, note=""):
@@ -99,7 +102,7 @@ class Tuner:
         self.tuned = None
         self.gen = 0
 
-    def start(self, freqs, mode, squelch=0, label=""):
+    def start(self, freqs, mode, squelch=0, label="", program=0):
         """Tune and return (generation, mp3 stream). More than one frequency scans them (needs squelch).
         Listening wins over an automatic satellite capture, one running is stopped, unless capturing is set to
         Always: then a pass being recorded keeps the dongle until it's over."""
@@ -116,21 +119,37 @@ class Tuner:
             raise OSError("rtl-sdr isn't installed (sudo apt install rtl-sdr)")
         freqs = [int(f) for f in freqs][:32]
         release_sdr()
-        cmd = ["rtl_fm", *MODES[mode], *[a for f in freqs for a in ("-f", str(f))], "-r", "48000",
-               "-l", str(int(squelch or (60 if len(freqs) > 1 else 0))), "-"]
+        hd = mode in ("hd", "hdam")
+        if hd:
+            if not shutil.which("nrsc5"):
+                raise OSError("The HD Radio decoder isn't installed (setup-pi.sh builds nrsc5)")
+            # nrsc5 takes a frequency in Hz above 10000, a program number (0 = HD1), and for AM its own flags
+            cmd = ["nrsc5", *(["--am", "-D", "2"] if mode == "hdam" else []), "-o", "-", "-t", "raw", str(freqs[0]), str(int(program) % 4)]
+            hdradio.reset(freqs[0], int(program) % 4, am=mode == "hdam")
+        else:
+            cmd = ["rtl_fm", *MODES[mode], *[a for f in freqs for a in ("-f", str(f))], "-r", "48000",
+                   "-l", str(int(squelch or (60 if len(freqs) > 1 else 0))), "-"]
         # (no input probing or buffering: ffmpeg otherwise spends ~4 s studying the raw audio before the first byte)
         enc = ["ffmpeg", "-v", "error", "-fflags", "nobuffer", "-probesize", "32", "-analyzeduration", "0",
-               "-f", "s16le", "-ar", "48000", "-ac", "1", "-i", "-",
+               "-f", "s16le", "-ar", "44100" if hd else "48000", "-ac", "2" if hd else "1", "-i", "-",
                "-c:a", "libmp3lame", "-b:a", "128k", "-flush_packets", "1", "-f", "mp3", "-"]
         with self.lock:
             self._stop()
-            rtl = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            rtl = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE if hd else subprocess.DEVNULL)
+            if hd:  # nrsc5's log is where the station's information comes from
+                threading.Thread(target=self._read_log, args=(rtl,), daemon=True).start()
             mp3 = subprocess.Popen(enc, stdin=rtl.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             rtl.stdout.close()
             self.procs = (rtl, mp3)
             self.gen += 1
             self.tuned = {"freqs": freqs, "mode": mode, "label": label, "since": time.time()}
             return self.gen, mp3.stdout
+
+    @staticmethod
+    def _read_log(proc):
+        for raw in proc.stderr:
+            hdradio.ingest_line(raw.decode("utf-8", "replace"))
+        hdradio.stop()
 
     def stop(self, gen=None):
         with self.lock:
@@ -175,6 +194,60 @@ def fm_scan():
         near = [db for hz, db in power.items() if abs(hz - f) <= 60e3]
         if near and max(near) > floor + 8:
             found.append({"f": round(f), "db": round(max(near) - floor, 1)})
+    return sorted(found, key=lambda s: -s["db"])
+
+
+def am_scan():
+    """Stations on the AM band, strongest first: one direct-sampling capture of the whole band (the dongle's HF mode,
+    as the tuner uses for AM), analysed here: each 10 kHz channel from 540 to 1600 kHz is a station when its carrier
+    stands out of the noise around it. Stops the tuner (one dongle). 1610-1700 kHz is above what the capture covers."""
+    import ctypes
+    import numpy as np
+    if not sdr_present():
+        raise OSError("SDR not connected: plug in the Nooelec v5")
+    tuner.stop()
+    release_sdr(hold_s=45)
+    time.sleep(1.0)
+    lib = ctypes.CDLL("librtlsdr.so.0")
+    dev, rate, nbytes = ctypes.c_void_p(), 3200000, 2 * 3200000
+    if lib.rtlsdr_open(ctypes.byref(dev), 0) < 0:
+        raise OSError("Couldn't open the SDR: something else has it")
+    try:
+        lib.rtlsdr_set_direct_sampling(dev, 2)  # the Q branch, like rtl_fm's -E direct2
+        lib.rtlsdr_set_sample_rate(dev, rate)
+        lib.rtlsdr_reset_buffer(dev)
+        buf, got = (ctypes.c_ubyte * nbytes)(), ctypes.c_int(0)
+        if lib.rtlsdr_read_sync(dev, buf, nbytes, ctypes.byref(got)) < 0 or got.value < nbytes // 2:
+            raise OSError("The SDR didn't deliver samples")
+        raw = np.frombuffer(bytes(buf)[:got.value], dtype=np.uint8).astype(np.float32) - 127.5
+    finally:
+        lib.rtlsdr_close(dev)
+    x = raw[1::2] if raw[1::2].std() >= raw[0::2].std() else raw[0::2]  # whichever branch carries the signal
+    return am_stations(x, rate)
+
+
+def am_stations(x, rate):
+    """AM carriers in a real-valued capture x sampled at `rate`: [{"f": Hz, "db": dB above the noise}], strongest first."""
+    import numpy as np
+    n = 1 << 15
+    segs = len(x) // n
+    if segs < 4:
+        return []
+    win = np.hanning(n).astype(np.float32)
+    power = np.zeros(n // 2 + 1)
+    for i in range(segs):
+        power += np.abs(np.fft.rfft(x[i * n:(i + 1) * n] * win)) ** 2
+    db = 10 * np.log10(power / segs + 1e-9)
+    hz = np.fft.rfftfreq(n, 1 / rate)
+    found = []
+    for k in range(54, 161):  # 540 to 1600 kHz
+        f = k * 10e3
+        near = np.abs(hz - f) <= 700
+        ring = (np.abs(hz - f) > 4000) & (np.abs(hz - f) <= 20000)
+        if near.any() and ring.any():
+            over = float(db[near].max() - np.median(db[ring]))
+            if over > 10:
+                found.append({"f": round(f), "db": round(over, 1)})
     return sorted(found, key=lambda s: -s["db"])
 
 
