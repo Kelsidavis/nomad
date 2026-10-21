@@ -679,8 +679,6 @@ function renderNav() {
   $(".nav-active", card).hidden = mode !== "active";
   $("#map-search").hidden = mode === "active";
   document.body.classList.toggle("navigating", mode === "active");
-  $("#nav-vol").hidden = mode !== "active";
-  if (mode === "active" && navVol.level == null) volStep(0);
   $("#map-banner").hidden = !(mode === "active" && currentView !== "home");
   if (mode === "idle") return renderRecents();
   const r = nav.route;
@@ -1379,7 +1377,7 @@ function nudgeVolume(delta) {
   api("/api/volume", { json: { level } }).catch(() => {});
 }
 
-// The volume while navigating (top right): down, mute, up; the output's own volume and mute (server.py /api/volume).
+// The volume (top right of the map): down, mute, up; the output's own volume and mute (server.py /api/volume).
 const navVol = { level: null, muted: false };
 function paintNavVol() {
   const btn = $("#vol-mute");
@@ -1397,7 +1395,8 @@ async function volStep(d) {
   if (navVol.level == null) Object.assign(navVol, await api("/api/volume").catch(() => ({})));
   return volAct({ level: Math.max(0, Math.min(100, (navVol.level ?? 50) + d)) });
 }
-setInterval(() => nav.active && api("/api/volume").then((v) => { Object.assign(navVol, v); paintNavVol(); }).catch(() => {}), 10000);
+volStep(0);  // the level to show
+setInterval(() => api("/api/volume").then((v) => { Object.assign(navVol, v); paintNavVol(); }).catch(() => {}), 10000);
 
 // ---- brightness (display.py): one level for the day and one for the night; the hardware, else a black layer ----
 let bright = null;
