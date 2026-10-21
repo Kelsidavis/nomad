@@ -122,7 +122,7 @@ Each change has do, key and value:
 - brightness: key day, night, current or auto. value a number 5-100, or +20 or -20 for brighter or dimmer; for auto, on or off.
 - volume: key level (value 0-100), step (value +10 or -10), or mute (value on, off or toggle).
 - show: open a screen. key one of home, media, weather, news, radio, assistant, vehicle, settings, emergency, help. For radio, value may be one of fm, am, noaa, scanner, sats, air, ships, mesh, sdr (Listening); else "".
-- layer: a map layer. key one of satellite, radar, hillshade, relief, contours, 3d, tsunami, quakes, aircraft, ships. value on, off or toggle.
+- layer: a map layer. key one of satellite, radar, hillshade, relief, contours, 3d, tsunami, quakes, aircraft, ships, trailheads. value on, off or toggle.
 - map: key zoom_in, zoom_out, recenter or panel (value show or hide: the side panel).
 - listener: the SDR radio listening. key one of ais (ships), tpms (tire sensors), nwr (emergency broadcasts), acars (aircraft messages), adsb (aircraft). value on or off.
 - run: anything else the driver can do or ask by voice, as the words they would say: navigating, music, timers, and the questions the unit answers about this truck and trip (how far can I go, any ships nearby, what's my tire pressure, any emergency alerts, will it rain, what's the speed limit). key "", value the words ("play something chill", "navigate home", "set a timer for 10 minutes", "any ships nearby").

@@ -231,7 +231,7 @@ let home = load("home", null);  // {name, address, lat, lon}: Settings → Home
 let radarOn = load("radar", false);
 // Elevation layers (server.py /terrain: the downloaded DEM, else AWS when online). mlcontour makes contour lines
 // from the same tiles in a worker.
-const terrain = { hillshade: false, relief: false, contours: false, "3d": false, tsunami: false, quakes: false, aircraft: false, ships: false, ...load("terrainLayers", {}) };
+const terrain = { hillshade: false, relief: false, contours: false, "3d": false, tsunami: false, quakes: false, aircraft: false, ships: false, trailheads: true, ...load("terrainLayers", {}) };
 let dem = null;  // mlcontour.DemSource, made in initMap
 const DEM_MAXZOOM = 11;  // NEXRAD radar over the map (radio.py radar_tile), new frames every 5 min
 const radarStamp = () => Math.floor(Date.now() / 300000);
@@ -257,6 +257,55 @@ function imageryLayers(sources) {
     return { id: "img-" + name, type: "raster", source: "img-" + name, minzoom: m.minzoom, paint: { "raster-fade-duration": 0 } };
   });
 }
+// The stock labels are 10-12 px even zoomed all the way in, and trails, forest roads and their references ("TR 216", "NF 9310") are
+// either faint or unlabeled. This makes the map readable from the driver's seat: text grows with zoom and gets a thicker halo,
+// minor-road labels start sooner and in a readable color, trails and tracks (kind "path"; forest service roads are kind_detail
+// "track") get lines of their own, and both are labeled with the name or, as most have, the reference.
+function tuneBasemap(layers, dark) {
+  const ramp = (a, b, c, d) => ["interpolate", ["linear"], ["zoom"], 11, a, 14, b, 17, c, 20, d];
+  const scale = (expr, f) => {  // grow a zoom ramp's numeric outputs
+    if (typeof expr === "number") return ramp(expr * f, expr * f * 1.25, expr * f * 1.6, expr * f * 2);
+    if (Array.isArray(expr) && expr[0] === "interpolate") return expr.map((x, i) => (i >= 4 && i % 2 === 0 && typeof x === "number" ? Math.round(x * f * 10) / 10 : x));
+    return expr;
+  };
+  const text = dark ? "#e6e6e6" : "#2b2b2b", halo = dark ? "#000" : "#fff";
+  for (const l of layers) {
+    if (l.type !== "symbol" || !l.layout?.["text-size"]) continue;
+    l.paint = l.paint || {};
+    if (l.id === "roads_labels_minor") {
+      l.minzoom = 12.5;
+      l.layout["text-size"] = ramp(14, 18, 23, 28);
+      l.layout["text-field"] = ["coalesce", ["get", "name"], ["get", "ref"]];
+      l.paint["text-color"] = text;
+    } else if (l.id === "roads_labels_major") l.layout["text-size"] = ramp(14, 17, 21, 26);
+    else if (l.id === "pois") l.layout["text-size"] = ["interpolate", ["linear"], ["zoom"], 12, 13, 15, 16, 17, 19, 19, 24];
+    else if (l.id !== "roads_shields" && l.id !== "roads_oneway") l.layout["text-size"] = scale(l.layout["text-size"], 1.2);
+    if (l.id.startsWith("roads_labels") || l.id === "pois" || l.id.startsWith("water_") || l.id === "address_label") {
+      l.paint["text-halo-width"] = 2.6;
+      l.paint["text-halo-color"] = halo;
+    }
+  }
+  const first = layers.findIndex((l) => l.type === "symbol");
+  const c = dark ? { path: "#7bd88f", track: "#e0b36a", casing: "rgba(0,0,0,0.6)" } : { path: "#2e7d32", track: "#8a5a22", casing: "rgba(255,255,255,0.75)" };
+  const width = (a, b, d) => ["interpolate", ["linear"], ["zoom"], 11, a, 14, b, 18, d];
+  const track = ["all", ["==", "kind", "path"], ["==", "kind_detail", "track"]];
+  layers.splice(first < 0 ? layers.length : first, 0,
+    { id: "trails-track-casing", type: "line", source: "protomaps", "source-layer": "roads", minzoom: 10, filter: track,
+      layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": c.casing, "line-width": width(2.4, 4.6, 10) } },
+    { id: "trails-track", type: "line", source: "protomaps", "source-layer": "roads", minzoom: 10, filter: track,
+      layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": c.track, "line-width": width(1.3, 2.7, 6.5) } },
+    { id: "trails-path", type: "line", source: "protomaps", "source-layer": "roads", minzoom: 10.5,
+      filter: ["all", ["==", "kind", "path"], ["!=", "kind_detail", "track"], ["!=", "kind_detail", "steps"]],
+      layout: { "line-join": "round" }, paint: { "line-color": c.path, "line-width": width(1.1, 2.3, 5), "line-dasharray": [2, 1.2] } });
+  const after = layers.findIndex((l) => l.id === "roads_labels_minor");
+  layers.splice(after < 0 ? layers.length : after + 1, 0, { id: "trail-labels", type: "symbol", source: "protomaps", "source-layer": "roads", minzoom: 11.5,
+    filter: ["all", ["==", "kind", "path"], ["any", ["has", "name"], ["has", "ref"]]],
+    layout: { "symbol-placement": "line", "text-field": ["coalesce", ["get", "name"], ["get", "ref"]], "text-font": ["Noto Sans Medium"],
+      "text-size": ramp(14, 18, 23, 28), "text-max-angle": 35, "symbol-spacing": 200, "text-letter-spacing": 0.03 },
+    paint: { "text-color": ["case", ["==", ["get", "kind_detail"], "track"], dark ? "#ffe2ad" : "#5a3a10", dark ? "#d9f5df" : "#1b4d20"],
+      "text-halo-color": halo, "text-halo-width": 2.8 } });
+}
+
 function buildStyle() {
   const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
   const origin = location.origin, c = routeColors(), sources = {};
@@ -270,6 +319,7 @@ function buildStyle() {
       layers = [...layers.slice(0, firstRoad).filter((l) => l.type === "background"), ...imageryLayers(sources),
         ...layers.slice(firstRoad).filter((l) => l["source-layer"] !== "buildings")];
     }
+    tuneBasemap(layers, theme === "dark");
   } else {
     sources.osm = { type: "raster", tiles: [`${origin}/tiles/{z}/{x}/{y}.png`], tileSize: 256, maxzoom: 19, attribution: "© OpenStreetMap contributors" };
     // Swapping brightness min and max inverts the tiles for night; the hue turn keeps water blue.
@@ -332,6 +382,20 @@ function buildStyle() {
       "circle-radius": ["interpolate", ["exponential", 1.6], ["get", "mag"], 2.5, 4, 5, 12, 7, 26],
       "circle-color": ["interpolate", ["linear"], ["get", "hours"], 0, "#ff1744", 24, "#ff9100", 168, "#ffd54f"],
       "circle-opacity": 0.65, "circle-stroke-width": 1, "circle-stroke-color": "#000" } });
+  }
+  if (terrain.trailheads) {  // trailheads, campgrounds and viewpoints kept from OpenStreetMap (trailheads.py)
+    sources.trailheads = { type: "geojson", data: `${origin}/api/trailheads`, attribution: "Trailheads: OpenStreetMap" };
+    const dark = theme === "dark";
+    layers.push(
+      { id: "trailheads", type: "circle", source: "trailheads", minzoom: 8, paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 3.5, 12, 6.5, 16, 11],
+        "circle-color": ["match", ["get", "kind"], "trailhead", "#43a047", "camp", "#1e88e5", "viewpoint", "#8e24aa", "#fb8c00"],
+        "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" } },
+      { id: "trailhead-labels", type: "symbol", source: "trailheads", minzoom: 10, layout: {
+        "text-field": ["coalesce", ["get", "name"], ["match", ["get", "kind"], "trailhead", "Trailhead", "camp", "Campground", "viewpoint", "Viewpoint", "Ranger station"]],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 10, 13, 14, 17, 17, 21], "text-offset": [0, 1.2], "text-anchor": "top",
+        "text-font": ["Noto Sans Medium"], "text-optional": true },
+        paint: { "text-color": dark ? "#e8f5e9" : "#1b4d20", "text-halo-color": dark ? "#000" : "#fff", "text-halo-width": 2.4 } });
   }
   if (terrain.aircraft) {  // ADS-B (adsb.py): filled by pollAir
     sources.planes = { type: "geojson", data: planesGeojson(air.data) };
@@ -451,6 +515,8 @@ async function initMap() {
     if (hit) return showPlane(hit.properties.icao);
     const ship = map.getLayer("ships") ? map.queryRenderedFeatures(box, { layers: ["ships"] })[0] : null;
     if (ship) return showShip(ship.properties.mmsi);
+    const th = map.getLayer("trailheads") ? map.queryRenderedFeatures(box, { layers: ["trailheads"] })[0] : null;
+    if (th) return showTrailhead(th.properties, th.geometry.coordinates);
     const quakes = map.getLayer("quakes") ? map.queryRenderedFeatures(box, { layers: ["quakes"] }) : [];
     if (quakes.length) return showQuake(quakes.sort((a, b) => b.properties.mag - a.properties.mag)[0].properties, quakes[0].geometry.coordinates);
     $("#bright-pop").hidden = true;
@@ -1707,9 +1773,9 @@ const UI_SETTINGS = { units: ["imperial", "metric"], theme: ["auto", "dark", "li
   viz: ["bars", "mirror", "wave", "scope", "ring", "auto", "off"], vizColor: ["album", "accent", "rainbow"], speedWarn: ["show", "say", "off"], notify: ["show", "hide", "off"] };
 const UI_SETTING_NAMES = { units: "Units", theme: "Theme", clock: "Clock", orient: "Map while navigating", prompts: "Spoken directions", accent: "Accent color",
   viz: "Visualizer", vizColor: "Visualizer color", speedWarn: "Speed limit", notify: "Phone notifications" };
-const UI_LAYERS = ["satellite", "radar", "hillshade", "relief", "contours", "3d", "tsunami", "quakes", "aircraft", "ships"];
+const UI_LAYERS = ["satellite", "radar", "hillshade", "relief", "contours", "3d", "tsunami", "quakes", "aircraft", "ships", "trailheads"];
 const UI_LAYER_NAMES = { satellite: "Satellite", radar: "Radar", hillshade: "Shaded relief", relief: "Elevation colors", contours: "Contours", "3d": "3D terrain",
-  tsunami: "Tsunami zones", quakes: "Earthquakes", aircraft: "Aircraft", ships: "Ships" };
+  tsunami: "Tsunami zones", quakes: "Earthquakes", aircraft: "Aircraft", ships: "Ships", trailheads: "Trailheads and camps" };
 const UI_VIEWS = ["home", "media", "weather", "news", "radio", "assistant", "vehicle", "settings", "emergency", "help"];
 const UI_RADIO_TABS = { fm: "fm", am: "am", noaa: "weather", weather: "weather", scanner: "scanner", sats: "sats", satellites: "sats", air: "air", aircraft: "air", ships: "ships", mesh: "mesh", sdr: "sdr", listening: "sdr" };
 const UI_LISTENERS = { ais: "Ships (AIS)", tpms: "Tire sensors", nwr: "Emergency broadcasts", acars: "Aircraft messages", adsb: "Aircraft (ADS-B)" };
@@ -3540,6 +3606,27 @@ async function pollNwr() {
 setInterval(pollNwr, 30000);
 setTimeout(pollNwr, 6000);
 
+// A tapped trailhead, campground or viewpoint: what it is, its reference and fee, how far, and a button to drive there.
+const TH_KINDS = { trailhead: "Trailhead", camp: "Campground", viewpoint: "Viewpoint", ranger: "Ranger station" };
+function showTrailhead(p, coords) {
+  quake.sel = `th:${p.id}`;
+  air.sel = ais.sel = null;
+  const box = $("#plane-card"), imperial = settings.units === "imperial";
+  const rows = [["Kind", TH_KINDS[p.kind] || p.kind]];
+  if (p.ref) rows.push(["Reference", p.ref]);
+  if (p.operator) rows.push(["Run by", p.operator]);
+  if (p.fee) rows.push(["Fee", p.fee === "yes" ? "yes" : p.fee === "no" ? "none" : p.fee]);
+  if (p.access && p.access !== "yes") rows.push(["Access", p.access]);
+  if (p.capacity) rows.push(["Capacity", p.capacity]);
+  if (lastPos) rows.push(["From you", distText(haversine(lastPos.lat, lastPos.lon, coords[1], coords[0]))]);
+  if (p.description) rows.push(["Notes", p.description]);
+  box.hidden = false;
+  box.classList.remove("alert");
+  box.innerHTML = `<div class="plane-head"><div><b>${escapeHtml(p.name || TH_KINDS[p.kind] || "Place")}</b><span>${escapeHtml(TH_KINDS[p.kind] || "")}${p.ref ? ` · ${escapeHtml(p.ref)}` : ""}</span></div>
+    <button class="icon-btn" data-action="plane-close" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+    <div class="plane-grid">${rows.map(([k, x]) => `<span>${k}</span><b>${escapeHtml(String(x))}</b>`).join("")}</div>
+    <div class="btn-row"><button class="btn primary" data-action="th-go" data-lat="${coords[1]}" data-lon="${coords[0]}" data-name="${escapeHtml(p.name || TH_KINDS[p.kind] || "Place")}">Navigate here</button></div>`;
+}
 // A tapped earthquake: how big, how long ago, how deep, how far from the truck, and what USGS flagged.
 function showQuake(q, coords) {
   quake.sel = q ? q.id : null;
@@ -4745,6 +4832,7 @@ const ACTIONS = {
   "bright-up": () => setBrightness((bright?.level ?? 100) + 10),
   "bright-auto": () => loadBrightness({ auto: !bright?.auto }),
   "plane-close": () => { showPlane(null); showShip(null); showQuake(null); },
+  "th-go": (btn) => { const d = { name: btn.dataset.name, address: "", lat: Number(btn.dataset.lat), lon: Number(btn.dataset.lon) }; showQuake(null); previewRoute(d); },
   "tpms-assign": async (btn) => { tpmsInfo = await api("/api/tpms/assign", { json: { key: btn.dataset.key, wheel: btn.dataset.wheel } }).catch((e) => (toast(e.message), tpmsInfo)); renderTpms(); },
   "tpms-toggle": async () => { await api("/api/sdr", { json: { name: "tpms", enabled: !tpmsInfo?.enabled } }).catch(() => null); await loadTpms(); },
   "tpms-forget": async (btn) => { tpmsInfo = await api("/api/tpms/forget", { json: { key: btn.dataset.key } }).catch(() => tpmsInfo); renderTpms(); },

@@ -59,6 +59,7 @@ import fuel  # noqa: E402
 import hdradio  # noqa: E402
 import namescan  # noqa: E402
 import power  # noqa: E402
+import trailheads  # noqa: E402
 import rds  # noqa: E402
 import stations  # noqa: E402
 import display  # noqa: E402
@@ -936,6 +937,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/adsb":  # aircraft heard on 1090 MHz; asking keeps the receiver on for a while
                 adsb.want()
                 return self.send(200, adsb.status())
+            if path == "/api/trailheads":  # trailheads, campgrounds, viewpoints kept from OpenStreetMap, as GeoJSON for the map layer
+                return self.send(200, trailheads.geojson(), cache="max-age=120")
             if path == "/api/power":  # low-power mode and the recent power events
                 return self.send(200, power.status())
             if path == "/api/sdr":  # the SDR's time slices: what they are, when they last ran, whether they're on
@@ -1072,6 +1075,14 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, mesh_call(path[len("/api/mesh"):], self.body_json(), timeout=10))
                 except (OSError, ValueError) as e:
                     return self.send(400, {"error": str(e)[:160]})
+            if path == "/api/trailheads/refresh":  # fetch the area around the truck now
+                p = here()
+                if not p:
+                    return self.send(400, {"error": "No position yet"})
+                try:
+                    return self.send(200, {"places": trailheads.fetch(*p), **trailheads.status()})
+                except OSError as e:
+                    return self.send(503, {"error": str(e)})
             if path == "/api/power":  # {shed: minutes}: from powerguard when the voltage dips (0 ends it)
                 power.shed(float(self.body_json().get("shed", 0)))
                 return self.send(200, power.status())
@@ -1362,7 +1373,7 @@ def main():
     for loop in (gps_loop, phone_loop, system_loop, speech_loop, intent.warm_loop, library_loop,
                  lambda: radio.capture_loop(here), lambda: emergency.quake_loop(here),
                  lambda: radio.weather_loop(here), net_loop, news.news_loop, obd.obd_loop, mesh_loop, road_loop,
-                 lambda: trip.trip_loop(lambda: state.position(time.time())), lambda: adsb.adsb_loop(here), lambda: sdr.sdr_loop(here, sdr_context), lambda: stations.loop(here)):
+                 lambda: trip.trip_loop(lambda: state.position(time.time())), lambda: adsb.adsb_loop(here), lambda: sdr.sdr_loop(here, sdr_context), lambda: stations.loop(here), lambda: trailheads.loop(here)):
         threading.Thread(target=loop, daemon=True).start()
     server = ThreadingHTTPServer((BIND, PORT), Handler)
     server.daemon_threads = True
