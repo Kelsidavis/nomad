@@ -827,7 +827,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/quakes":  # the past week's quakes as GeoJSON, for the map layer
                 return self.send(200, {"type": "FeatureCollection", "features": [
                     {"type": "Feature", "geometry": {"type": "Point", "coordinates": [q["lon"], q["lat"]]},
-                     "properties": {"mag": q["mag"], "place": q["place"], "hours": round((time.time() - q["time"]) / 3600, 1)}}
+                     "properties": {"id": q["id"], "mag": q["mag"], "place": q["place"], "time": q["time"], "depth_km": q["depth_km"],
+                                    "tsunami": 1 if q.get("tsunami") else 0, "alert": q.get("alert") or "",
+                                    "hours": round((time.time() - q["time"]) / 3600, 1)}}
                     for q in emergency.quakes()]}, cache="max-age=60")
             if path.startswith("/emergency/"):  # /emergency/zones.geojson etc.: tsunami evacuation layers
                 return self.file(emergency.layer_path(path[11:].removesuffix(".geojson")), "max-age=86400")

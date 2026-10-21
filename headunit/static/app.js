@@ -451,9 +451,12 @@ async function initMap() {
     if (hit) return showPlane(hit.properties.icao);
     const ship = map.getLayer("ships") ? map.queryRenderedFeatures(box, { layers: ["ships"] })[0] : null;
     if (ship) return showShip(ship.properties.mmsi);
+    const quakes = map.getLayer("quakes") ? map.queryRenderedFeatures(box, { layers: ["quakes"] }) : [];
+    if (quakes.length) return showQuake(quakes.sort((a, b) => b.properties.mag - a.properties.mag)[0].properties, quakes[0].geometry.coordinates);
     $("#bright-pop").hidden = true;
     if (air.sel) showPlane(null);
     if (ais.sel) showShip(null);
+    if (quake.sel) showQuake(null);
     // a tap on the map beside an open screen (Media, Weather, ...) puts it away: the map, full width
     if (currentView !== "home") { showView("home"); setPanel(true, false); }
   });
@@ -3359,6 +3362,7 @@ setInterval(() => nav.active && routeWeather(), 15 * 60 * 1000);
 
 // ---- AIS (ais.py): ships and boats from their 162 MHz broadcasts, on the map and the Radio screen ----
 const ais = { data: null, timer: null, sel: null };
+const quake = { sel: null };  // a tapped earthquake on the map (its card shares the plane card's place)
 function shipsWanted() { return terrain.ships || (currentView === "radio" && radio.tab === "ships"); }
 async function pollShips() {
   clearTimeout(ais.timer);
@@ -3412,13 +3416,13 @@ function shipInfo(v) {
 }
 function showShip(mmsi) {
   ais.sel = mmsi ? Number(mmsi) : null;
-  if (mmsi) air.sel = null;
+  if (mmsi) { air.sel = null; quake.sel = null; }
   paintPlane();
   paintShip();
 }
 function paintShip() {
   const box = $("#plane-card");
-  if (!ais.sel) { if (!air.sel) box.hidden = true; return; }
+  if (!ais.sel) { if (!air.sel && !quake.sel) box.hidden = true; return; }
   box.hidden = false;
   box.classList.remove("alert");
   const v = (ais.data?.ships || []).find((x) => x.mmsi === ais.sel);
@@ -3536,6 +3540,29 @@ async function pollNwr() {
 setInterval(pollNwr, 30000);
 setTimeout(pollNwr, 6000);
 
+// A tapped earthquake: how big, how long ago, how deep, how far from the truck, and what USGS flagged.
+function showQuake(q, coords) {
+  quake.sel = q ? q.id : null;
+  const box = $("#plane-card");
+  if (!q) { if (!air.sel && !ais.sel) box.hidden = true; return; }
+  air.sel = ais.sel = null;
+  const ago = (Date.now() / 1000 - q.time) / 3600, imperial = settings.units === "imperial";
+  const when = ago < 1 ? `${Math.max(1, Math.round(ago * 60))} min ago` : ago < 48 ? `${Math.round(ago)} h ago` : `${Math.round(ago / 24)} days ago`;
+  const at = new Date(q.time * 1000);
+  const rows = [["Magnitude", `M ${Number(q.mag).toFixed(1)}`], ["Date", at.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric", year: "numeric" })],
+    ["Time", fmtClock(at, true)], ["Ago", when],
+    ["Depth", imperial ? `${(q.depth_km * 0.621371).toFixed(1)} mi (${Math.round(q.depth_km)} km)` : `${Math.round(q.depth_km)} km`]];
+  if (lastPos && coords) rows.push(["From you", distText(haversine(lastPos.lat, lastPos.lon, coords[1], coords[0]))]);
+  if (Number(q.tsunami)) rows.push(["Tsunami", "USGS set the tsunami flag: check the Emergency screen"]);
+  if (q.alert) rows.push(["USGS alert", q.alert]);
+  const strong = q.mag >= 5;
+  box.hidden = false;
+  box.classList.toggle("alert", strong);
+  box.innerHTML = `<div class="plane-head"><div><b>M ${Number(q.mag).toFixed(1)} earthquake</b><span>${escapeHtml(q.place || "")}</span></div>
+    <button class="icon-btn" data-action="plane-close" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+    <div class="plane-grid">${rows.map(([k, x]) => `<span>${k}</span><b>${escapeHtml(String(x))}</b>`).join("")}</div>`;
+}
+
 // ---- ADS-B (adsb.py): aircraft from their 1090 MHz broadcasts, on the map and the Radio screen ----
 const air = { data: null, timer: null, sel: null };
 function airWanted() { return terrain.aircraft || (currentView === "radio" && radio.tab === "air"); }
@@ -3583,14 +3610,14 @@ function planeInfo(p) {  // [label, value] pairs for what's known about an aircr
 }
 function showPlane(icao) {
   air.sel = icao;
-  if (icao) ais.sel = null;
+  if (icao) { ais.sel = null; quake.sel = null; }
   paintPlane();
   paintShip();
   if (icao) loadAcars();
 }
 function paintPlane() {
   const box = $("#plane-card"), p = air.sel && (air.data?.aircraft || []).find((x) => x.icao === air.sel);
-  if (!air.sel) { if (!ais.sel) box.hidden = true; return; }
+  if (!air.sel) { if (!ais.sel && !quake.sel) box.hidden = true; return; }
   box.hidden = false;
   if (!p) {  // gone from the list: out of range for a minute
     box.innerHTML = `<div class="plane-head"><div><b>Aircraft ${escapeHtml(air.sel)}</b><span>No longer heard</span></div><button class="icon-btn" data-action="plane-close" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>`;
@@ -4717,7 +4744,7 @@ const ACTIONS = {
   "bright-down": () => setBrightness((bright?.level ?? 100) - 10),
   "bright-up": () => setBrightness((bright?.level ?? 100) + 10),
   "bright-auto": () => loadBrightness({ auto: !bright?.auto }),
-  "plane-close": () => { showPlane(null); showShip(null); },
+  "plane-close": () => { showPlane(null); showShip(null); showQuake(null); },
   "tpms-assign": async (btn) => { tpmsInfo = await api("/api/tpms/assign", { json: { key: btn.dataset.key, wheel: btn.dataset.wheel } }).catch((e) => (toast(e.message), tpmsInfo)); renderTpms(); },
   "tpms-toggle": async () => { await api("/api/sdr", { json: { name: "tpms", enabled: !tpmsInfo?.enabled } }).catch(() => null); await loadTpms(); },
   "tpms-forget": async (btn) => { tpmsInfo = await api("/api/tpms/forget", { json: { key: btn.dataset.key } }).catch(() => tpmsInfo); renderTpms(); },
