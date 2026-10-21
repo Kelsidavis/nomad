@@ -10,6 +10,7 @@ import os
 import pathlib
 import threading
 import time
+import durable
 
 import drives
 import obd
@@ -41,9 +42,7 @@ _dirty = [0.0]
 
 def _save():
     DATA.mkdir(parents=True, exist_ok=True)
-    tmp = FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(_d))
-    tmp.replace(FILE)
+    durable.write_text(FILE, json.dumps(_d))
 
 
 def distance_km():

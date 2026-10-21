@@ -13,6 +13,7 @@ import os
 import pathlib
 import threading
 import time
+import durable
 
 import hdradio
 import radio
@@ -40,9 +41,7 @@ def _save(force=False):
     if not _dirty or (not force and time.time() - _saved_at < 10):
         return
     DATA.mkdir(parents=True, exist_ok=True)
-    tmp = FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(_db))
-    tmp.replace(FILE)
+    durable.write_text(FILE, json.dumps(_db))
     _saved_at, _dirty = time.time(), False
 
 

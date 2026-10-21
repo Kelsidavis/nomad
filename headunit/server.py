@@ -24,6 +24,7 @@ import tempfile
 import sys
 import threading
 import time
+import durable
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -57,6 +58,7 @@ import tpms  # noqa: E402
 import fuel  # noqa: E402
 import hdradio  # noqa: E402
 import namescan  # noqa: E402
+import power  # noqa: E402
 import rds  # noqa: E402
 import stations  # noqa: E402
 import display  # noqa: E402
@@ -932,6 +934,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/adsb":  # aircraft heard on 1090 MHz; asking keeps the receiver on for a while
                 adsb.want()
                 return self.send(200, adsb.status())
+            if path == "/api/power":  # low-power mode and the recent power events
+                return self.send(200, power.status())
             if path == "/api/sdr":  # the SDR's time slices: what they are, when they last ran, whether they're on
                 return self.send(200, sdr.status())
             if path == "/api/ais":  # ships heard on 162 MHz, nearest first
@@ -1066,6 +1070,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, mesh_call(path[len("/api/mesh"):], self.body_json(), timeout=10))
                 except (OSError, ValueError) as e:
                     return self.send(400, {"error": str(e)[:160]})
+            if path == "/api/power":  # {shed: minutes}: from powerguard when the voltage dips (0 ends it)
+                power.shed(float(self.body_json().get("shed", 0)))
+                return self.send(200, power.status())
             if path == "/api/sdr":  # {name, enabled}
                 b = self.body_json()
                 sdr.set_enabled(b["name"], b["enabled"])
@@ -1155,7 +1162,7 @@ class Handler(BaseHTTPRequestHandler):
                     HOME_FILE.unlink(missing_ok=True)
                 else:
                     HOME_FILE.parent.mkdir(parents=True, exist_ok=True)
-                    HOME_FILE.write_text(json.dumps({k: h.get(k) for k in ("name", "address", "lat", "lon")}))
+                    durable.write_text(HOME_FILE, json.dumps({k: h.get(k) for k in ("name", "address", "lat", "lon")}))
                 return self.send(200, {"ok": True})
             if path == "/api/radio/stop":
                 radio.tuner.stop()

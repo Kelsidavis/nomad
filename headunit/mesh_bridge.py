@@ -18,6 +18,7 @@ import pathlib
 import sys
 import threading
 import time
+import durable
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -48,9 +49,7 @@ def _load():
 
 def _save_msgs():
     DATA.mkdir(parents=True, exist_ok=True)
-    tmp = MSGS.with_suffix(".tmp")
-    tmp.write_text(json.dumps(_msgs[-KEEP:], ensure_ascii=False))
-    tmp.replace(MSGS)
+    durable.write_text(MSGS, json.dumps(_msgs[-KEEP:], ensure_ascii=False))
 
 
 def prefs():
@@ -236,7 +235,7 @@ def set_prefs(body):
     p = prefs()
     p.update({k: bool(body[k]) for k in ("share", "speak") if k in body})
     DATA.mkdir(parents=True, exist_ok=True)
-    PREFS.write_text(json.dumps(p))
+    durable.write_text(PREFS, json.dumps(p))
     return p
 
 

@@ -19,6 +19,7 @@ import threading
 import time
 
 import config
+import durable
 import sdr
 
 DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit"))
@@ -98,7 +99,7 @@ def ingest_line(line, now=None):
         _alerts.insert(0, a)
         del _alerts[40:]
         DATA.mkdir(parents=True, exist_ok=True)
-        FILE.write_text(json.dumps(_alerts))
+        durable.write_text(FILE, json.dumps(_alerts))
 
 
 def _load():

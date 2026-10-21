@@ -1,0 +1,15 @@
+[Unit]
+Description=NOMAD power guard (sheds load when the voltage dips, logs power events)
+After=headunit.service
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/headunit/powerguard.py
+Environment=HEADUNIT_DATA=/home/k/.local/share/headunit
+Restart=always
+RestartSec=5
+# a clean stop (shutdown or reboot) is marked, so a start-up that finds no mark knows power was lost
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

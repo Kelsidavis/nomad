@@ -9,6 +9,7 @@ import pathlib
 import random
 import threading
 import time
+import durable
 import urllib.request
 
 DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit"))
@@ -189,9 +190,7 @@ def playlists():
 
 def _save(lists):
     DATA.mkdir(parents=True, exist_ok=True)
-    tmp = PLAYLISTS.with_suffix(".tmp")
-    tmp.write_text(json.dumps(lists, ensure_ascii=False))
-    tmp.replace(PLAYLISTS)
+    durable.write_text(PLAYLISTS, json.dumps(lists, ensure_ascii=False))
     return lists
 
 

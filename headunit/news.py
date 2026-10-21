@@ -16,6 +16,7 @@ import xml.etree.ElementTree as ET
 
 import config
 import network
+import durable
 
 DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit"))
 FEEDS = DATA / "news.json"
@@ -51,7 +52,7 @@ def feeds():
 
 def _save_feeds(lst):
     DATA.mkdir(parents=True, exist_ok=True)
-    FEEDS.write_text(json.dumps(lst, ensure_ascii=False))
+    durable.write_text(FEEDS, json.dumps(lst, ensure_ascii=False))
     return lst
 
 
@@ -91,9 +92,7 @@ def _cache():
 
 def _save_cache(c):
     DATA.mkdir(parents=True, exist_ok=True)
-    tmp = CACHE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(c, ensure_ascii=False))
-    tmp.replace(CACHE)
+    durable.write_text(CACHE, json.dumps(c, ensure_ascii=False))
 
 
 def _get(url):

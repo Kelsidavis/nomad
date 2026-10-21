@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import threading
 import time
+import durable
 
 import radio
 import sdr
@@ -216,7 +217,7 @@ def set_always(on):
     _st["always"] = bool(on)
     try:
         SETTING.parent.mkdir(parents=True, exist_ok=True)
-        SETTING.write_text(json.dumps({"always": _st["always"]}))
+        durable.write_text(SETTING, json.dumps({"always": _st["always"]}))
     except OSError:
         pass
 
@@ -233,7 +234,7 @@ def adsb_loop(where):
     radio.SDR_USERS.append(stop)
     while True:
         _ref["pos"] = where() or _ref["pos"]
-        wanted = _st["always"] or time.time() < _st["wanted_until"]
+        wanted = (_st["always"] or time.time() < _st["wanted_until"]) and not sdr.paused()
         with _ctl:
             if wanted and not _busy():
                 _start()

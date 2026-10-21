@@ -13,6 +13,7 @@ import threading
 import time
 
 import config
+import durable
 import sdr
 
 DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit"))
@@ -37,9 +38,7 @@ def _load():
 
 def _save():
     DATA.mkdir(parents=True, exist_ok=True)
-    tmp = FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"assigned": _assigned, "sensors": _sensors}))
-    tmp.replace(FILE)
+    durable.write_text(FILE, json.dumps({"assigned": _assigned, "sensors": _sensors}))
 
 
 def low_psi():

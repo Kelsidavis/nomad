@@ -10,6 +10,7 @@ import os
 import pathlib
 import threading
 import time
+import durable
 
 DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit"))
 DIR = DATA / "drives"
@@ -30,7 +31,7 @@ def enabled():
 
 def set_enabled(on):
     DATA.mkdir(parents=True, exist_ok=True)
-    PREFS.write_text(json.dumps({"on": bool(on)}))
+    durable.write_text(PREFS, json.dumps({"on": bool(on)}))
     if not on:
         with _lock:
             _cur["d"] = None
@@ -56,9 +57,7 @@ def _place(lat, lon):
 
 def _write(path, obj):
     DIR.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(obj, separators=(",", ":")))
-    tmp.replace(path)
+    durable.write_text(path, json.dumps(obj, separators=(",", ":")))
 
 
 def _finish(d):

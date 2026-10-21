@@ -15,6 +15,7 @@ import statistics
 import subprocess
 import threading
 import time
+import durable
 import urllib.request
 
 import hdradio
@@ -568,7 +569,7 @@ def save_settings(auto=None):
     if auto:
         cur["auto"] = auto
     DATA.mkdir(parents=True, exist_ok=True)
-    SETTINGS.write_text(json.dumps(cur))
+    durable.write_text(SETTINGS, json.dumps(cur))
     return cur
 
 

@@ -20,7 +20,7 @@ if [ "$1" = "--all" ]; then
     # The units name user k and /home/k; on the Pi they become whoever PI_HOST logs in as.
     ssh -t "$PI_HOST" 'H=$HOME U=$(id -un); sudo sh -c "install -m 644 /tmp/nomad.conf /etc/nomad.conf &&
         for s in /tmp/*.service; do sed \"s#/home/k/#$H/#g; s/^User=k\$/User=$U/\" \"\$s\" > /etc/systemd/system/\$(basename \$s); done &&
-        systemctl daemon-reload && systemctl restart headunit llm stt tts btaudio"'
+        systemctl daemon-reload && systemctl restart headunit llm stt tts btaudio powerguard"'
 else
     ssh -t "$PI_HOST" 'sudo systemctl restart headunit'
 fi

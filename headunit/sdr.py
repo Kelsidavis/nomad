@@ -19,6 +19,7 @@ import signal
 import subprocess
 import threading
 import time
+import durable
 
 import radio
 
@@ -26,6 +27,7 @@ DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".loca
 SETTINGS = DATA / "sdr.json"
 SLICES = []
 _run = {"slice": None, "procs": [], "since": 0.0}
+PAUSED = [0.0]  # until when everything here (and ADS-B) stays off: power.py sets it when the supply dips
 _lock = threading.Lock()
 
 
@@ -68,12 +70,16 @@ def set_enabled(name, on):
     cur = _settings()
     cur[name] = bool(on)
     DATA.mkdir(parents=True, exist_ok=True)
-    SETTINGS.write_text(json.dumps(cur))
+    durable.write_text(SETTINGS, json.dumps(cur))
 
 
 def busy():
     """A slice has the dongle."""
     return _run["slice"] is not None
+
+
+def paused():
+    return time.time() < PAUSED[0]
 
 
 def abort():
@@ -160,7 +166,7 @@ def sdr_loop(where, context):
     radio.SDR_USERS.append(abort)
     while True:
         time.sleep(3)
-        if busy() or radio.tuner.tuned or radio.capture.busy() or time.time() < radio.SDR_HOLD[0] or not radio.sdr_present():
+        if busy() or paused() or radio.tuner.tuned or radio.capture.busy() or time.time() < radio.SDR_HOLD[0] or not radio.sdr_present():
             continue
         ctx, now = context(), time.time()
         due = []

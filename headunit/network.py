@@ -12,6 +12,7 @@ import os
 import pathlib
 import subprocess
 import time
+import durable
 
 DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit"))
 PREFS = DATA / "network.json"
@@ -102,7 +103,7 @@ def set_data_use(mode):
     if mode not in MODES:
         raise ValueError(f"data use must be one of {', '.join(MODES)}")
     DATA.mkdir(parents=True, exist_ok=True)
-    PREFS.write_text(json.dumps({"data": mode}))
+    durable.write_text(PREFS, json.dumps({"data": mode}))
     return data_use()
 
 

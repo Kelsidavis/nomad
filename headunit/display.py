@@ -17,6 +17,7 @@ import threading
 import time
 
 import config
+import durable
 
 DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit"))
 FILE = DATA / "display.json"
@@ -74,9 +75,7 @@ def _load():
 
 def _save():
     DATA.mkdir(parents=True, exist_ok=True)
-    tmp = FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps({k: _state[k] for k in ("auto", "day", "night")}))
-    tmp.replace(FILE)
+    durable.write_text(FILE, json.dumps({k: _state[k] for k in ("auto", "day", "night")}))
 
 
 def _detect():

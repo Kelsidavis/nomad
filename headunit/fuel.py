@@ -20,6 +20,7 @@ import config
 import network
 import obd
 import trip
+import durable
 
 DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit"))
 LOG = DATA / "fuel.json"
@@ -86,9 +87,7 @@ def fillups():
 
 def _save(lst):
     DATA.mkdir(parents=True, exist_ok=True)
-    tmp = LOG.with_suffix(".tmp")
-    tmp.write_text(json.dumps(lst, ensure_ascii=False))
-    tmp.replace(LOG)
+    durable.write_text(LOG, json.dumps(lst, ensure_ascii=False))
     return lst
 
 

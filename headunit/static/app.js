@@ -4008,6 +4008,14 @@ function checkStops(p) {
 }
 
 
+// Low-power mode (power.py): when the supply dips, the extra radio listening pauses for a while; say so once.
+let wasShedding = false;
+setInterval(async () => {
+  const pw = await api("/api/power").catch(() => null);
+  if (pw?.shedding && !wasShedding) toast(`Low voltage: radio listening paused until ${fmtClock(new Date(pw.until * 1000))}`, 6000);
+  wasShedding = !!pw?.shedding;
+}, 30000);
+
 // ---- Settings → System: version, network, health, and the self-test ----
 async function paintSystem() {
   const s = await api("/api/system").catch(() => null);
@@ -4016,6 +4024,13 @@ async function paintSystem() {
   const t = parseInt(s.throttled || "0", 16);
   const power = t & 1 ? ["Under-voltage now", "bad"] : t & 0x10000 ? ["Dipped since boot", "warn-t"] : ["OK", "good"];
   const down = Object.entries(s.services || {}).filter(([, v]) => v !== "active").map(([k]) => k);
+  const pw = await api("/api/power").catch(() => null);
+  const evName = { undervoltage: "voltage dip", "low-voltage": "low voltage", "unclean-shutdown": "power lost", recovered: "recovered" };
+  const powerRows = pw ? [
+    ...(pw.shedding ? [["Low-power mode", `radio listening paused until ${fmtClock(new Date(pw.until * 1000))}`, "warn-t"]] : []),
+    ["Power events (24 h)", `${pw.dips_24h} voltage dip${pw.dips_24h === 1 ? "" : "s"} · ${pw.lost_24h} power loss${pw.lost_24h === 1 ? "" : "es"}`, pw.dips_24h || pw.lost_24h ? "warn-t" : "good"],
+    ...pw.events.filter((e) => e.type !== "recovered").slice(0, 3).map((e) => [`${agoText(e.t)}`, `${evName[e.type] || e.type}${e.volts ? ` · ${e.volts.toFixed(2)} V` : ""}`]),
+  ] : [];
   $("#sys-kv").innerHTML = kvRows([
     ["NOMAD", escapeHtml(s.version)],
     ["Network", escapeHtml([s.wifi, ...(s.ips || [])].filter(Boolean).join(" · ") || "not connected")],
@@ -4023,6 +4038,7 @@ async function paintSystem() {
     ["Free space", `${s.free_gb} GB`, s.free_gb < 5 ? "bad" : ""],
     ["CPU", `${s.cpu_temp_c != null ? s.cpu_temp_c.toFixed(0) + " °C" : "--"} · load ${s.load != null ? s.load.toFixed(2) : "--"}`, s.cpu_temp_c > 75 ? "bad" : ""],
     ["Power", power[0], power[1]],
+    ...powerRows,
     ["Services", down.length ? `not running: ${down.join(", ")}` : "all running", down.length ? "warn-t" : "good"],
   ]);
 }
