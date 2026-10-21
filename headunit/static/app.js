@@ -524,6 +524,7 @@ async function previewRoute(dest) {
     toast("Finding route…", 8000);
     const r = await fetchRoute(dest);
     $("#toast").hidden = true;
+    await loadFuelRange();
     Object.assign(nav, { route: r, dest, active: false, stops: [] });
     drawRoute(r);
     setFollow(false);
@@ -539,6 +540,7 @@ async function previewRoute(dest) {
 function startNav() {
   if (!nav.route) return;
   Object.assign(nav, { active: true, idx: 0, offCount: 0, spoken: {}, saidArrival: false, lastReroute: Date.now() });
+  fuelWarned = null;
   addRecent(nav.dest);
   map.easeTo({ zoom: 17, duration: 600 });
   setFollow(true);
@@ -551,6 +553,8 @@ function startNav() {
   const eta = fmtClock(new Date(Date.now() + r.duration * 1000), true);
   say(`Starting route to ${nav.dest.name}: ${fmtDur(r.duration).replace("min", "minutes").replace(" h ", " hours ")}, arriving at ${eta}. ` +
       `${first?.verbal_pre || first?.instruction || ""} ${r.stepAlong[1] > 400 ? first?.verbal_post || "" : ""}`.trim());
+  const fp = fuelPlan(r.cum[r.cum.length - 1]);
+  if (fp?.short) { fuelWarned = nav.dest; say(`You'll need fuel on the way: about ${Math.round(fp.range)} miles of range, and the route is ${Math.round(fp.mi)}. Say find gas ahead.`); }
   renderNav();
 }
 
@@ -671,6 +675,7 @@ function renderNav() {
     $("#pv-name").textContent = nav.dest.name;
     $("#pv-time").textContent = fmtDur(r.duration);
     $("#pv-dist").textContent = distText(r.distance) + (nav.dest.address ? ` · ${nav.dest.address}` : "");
+    paintRouteFuel();
     return;
   }
   const along = nav.along ?? 0, total = r.cum[r.cum.length - 1];
@@ -691,6 +696,7 @@ function renderNav() {
   const d = fmtDist(Math.max(0, total - along));
   $("#nav-left-dist").textContent = d.v;
   $("#nav-left-unit").textContent = d.u;
+  paintRouteFuel();
 }
 
 // recent destinations
@@ -3026,6 +3032,66 @@ function paidAt(d) {  // what you last paid at this station, for the search resu
   const s = (fuelInfo?.stations || []).find((x) => haversine(d.lat, d.lon, x.lat, x.lon) < 100);
   return s ? `You paid ${money(s.price, 3)} · ${agoText(s.t)}` : "";
 }
+// ---- fuel on the route: gallons, cost and whether the tank gets you there (fuel.py range_info) ----
+let fuelRange = null, fuelRangeAt = 0;
+async function loadFuelRange(force = false) {
+  if (!force && fuelRange && Date.now() - fuelRangeAt < 60000) return fuelRange;
+  fuelRange = await api("/api/fuel/range").catch(() => fuelRange);
+  fuelRangeAt = Date.now();
+  return fuelRange;
+}
+// What driving this many metres takes: gallons, cost, the fuel left on arrival (percent, with a tank size and
+// gauge) and whether it's more than the range to the reserve. null without an mpg.
+function fuelPlan(meters, price = fuelRange?.price) {
+  const f = fuelRange;
+  if (!f?.mpg) return null;
+  const mi = meters / 1609.344, gal = mi / f.mpg;
+  const arrive = f.tank_gal && f.level_pct != null ? f.level_pct - (gal / f.tank_gal) * 100 : null;
+  return { mi, gal, cost: price != null ? gal * price : null, arrive, range: f.range_mi, short: f.range_mi != null && mi > f.range_mi };
+}
+function fuelLine(p) {
+  if (!p) return "";
+  const bits = [`~${p.gal.toFixed(p.gal < 10 ? 1 : 0)} gal`];
+  if (p.cost != null) bits.push(money(p.cost, p.cost < 10 ? 2 : 0));
+  if (p.arrive != null && !p.short) bits.push(`${Math.round(p.arrive)}% fuel left on arrival`);
+  const warn = p.short ? `<div class="fuel-warn">⚠ Not enough fuel for this route: about ${Math.round(p.range)} mi of range, the route is ${Math.round(p.mi)} mi</div>` : "";
+  return `${bits.join(" · ")}${warn}`;
+}
+function paintRouteFuel() {
+  const r = nav.route, active = nav.active;
+  const box = $(active ? "#nav-fuel" : "#pv-fuel");
+  $(active ? "#pv-fuel" : "#nav-fuel").hidden = true;
+  const left = r ? (active ? r.cum[r.cum.length - 1] - (nav.along ?? 0) : r.cum[r.cum.length - 1]) : 0;
+  const p = r ? fuelPlan(left) : null;
+  box.hidden = !p;
+  box.innerHTML = fuelLine(p);
+  $("#pv-fuel-btn").hidden = !p?.short;
+}
+// While navigating: once, say it if what's left in the tank won't reach the destination.
+let fuelWarned = null;
+async function checkFuelOnRoute() {
+  const r = nav.route;
+  if (!r || !nav.active) return;
+  await loadFuelRange(true);
+  paintRouteFuel();
+  const p = fuelPlan(r.cum[r.cum.length - 1] - (nav.along ?? 0));
+  if (p?.short && fuelWarned !== nav.dest) {
+    fuelWarned = nav.dest;
+    say(`You may not make it to ${nav.dest.name} on this tank: about ${Math.round(p.range)} miles of range, ${Math.round(p.mi)} to go. Say find gas ahead to see stations.`);
+  }
+}
+setInterval(checkFuelOnRoute, 60000);
+async function rangeSay() {
+  const f = await loadFuelRange(true);
+  const r = nav.route, p = r ? fuelPlan(r.cum[r.cum.length - 1] - (nav.active ? nav.along ?? 0 : 0)) : null;
+  let msg;
+  if (!f?.mpg) msg = "I don't have your mileage yet: log two full tanks, or drive with the OBD adapter connected";
+  else if (f.range_mi == null) msg = `About ${f.mpg} miles per gallon${f.tank_gal ? ", but the fuel gauge isn't readable" : ". Set FUEL_TANK_GAL in the config and I can tell you the range"}`;
+  else msg = `About ${Math.round(f.range_mi)} miles of range at ${f.mpg} miles per gallon, with ${Math.round(f.level_pct)} percent in the tank`;
+  if (p) msg += `. This route needs about ${p.gal.toFixed(1)} gallons${p.cost != null ? `, around ${Math.round(p.cost)} dollars` : ""}${p.short ? ", more than you can do on this tank" : ""}`;
+  say(msg);
+  return msg;
+}
 async function fuelSay() {
   await loadFuel();
   const pr = fuelInfo?.prices?.areas || [];
@@ -3105,8 +3171,9 @@ const AHEAD = { gas: "gas", fuel: "gas", food: "food", restaurant: "restaurant",
   restroom: "rest area", bathroom: "rest area", hotel: "hotel", motel: "motel" };
 async function findAhead(what) {
   const r = nav.route;
-  if (!r || !nav.active) { openSearch(what); return null; }
-  const pos = lastPos ? [lastPos.lat, lastPos.lon] : r.coords[0];
+  if (!r) { openSearch(what); return null; }
+  const pos = nav.active && lastPos ? [lastPos.lat, lastPos.lon] : r.coords[0];  // before starting: from the start of the route
+  if (what === "gas" || what === "fuel") await Promise.all([fuelInfo ? null : loadFuel(), loadFuelRange()]);
   // the route ahead, as (point, km along) every ~8 km for the next ~100 km
   let start = 0, best = Infinity;
   for (let i = 0; i < r.coords.length; i += 5) {
@@ -3145,16 +3212,30 @@ function showAhead(what, list) {
   $("#search-text").textContent = `${what[0].toUpperCase()}${what.slice(1)} ahead`;
   const box = $("#search-results");
   if (!list.length) return (box.innerHTML = `<div class="empty">Nothing found within 1 mile of the route in the next 60 miles.</div>`);
+  const isGas = AHEAD[what] === "gas";
   box.replaceChildren(...list.map((x) => {
     const b = document.createElement("button");
     b.className = "list-item";
     b.innerHTML = `<div><div class="t"></div><div class="s"></div></div><div class="d"></div>`;
     b.querySelector(".t").textContent = x.name;
-    b.querySelector(".s").textContent = [x.address, x.off > 200 ? `${distText(x.off)} off the route` : "on the route", paidAt(x)].filter(Boolean).join(" · ");
+    b.querySelector(".s").textContent = [x.address, x.off > 200 ? `${distText(x.off)} off the route` : "on the route", ...(isGas ? gasStopInfo(x) : [paidAt(x)])].filter(Boolean).join(" · ");
     b.querySelector(".d").textContent = `in ${distText(x.along * 1000)}`;
     b.onclick = () => addStop(x);
     return b;
   }));
+}
+// A gas stop in the "gas ahead" list: its price (what you paid there, else the average), the fuel left when you
+// get there, and what filling the tank would cost.
+function gasStopInfo(x) {
+  const paid = (fuelInfo?.stations || []).find((s) => haversine(x.lat, x.lon, s.lat, s.lon) < 100);
+  const price = paid ? paid.price : fuelRange?.price;
+  const out = [paid ? `You paid ${money(paid.price, 3)} · ${agoText(paid.t)}` : price != null ? `~${money(price)}/gal (${fuelRange.price_from})` : ""];
+  const p = fuelPlan(x.along * 1000, price);
+  if (p?.arrive != null) {
+    out.push(p.arrive < 0 ? "you'd run dry before it" : `${Math.round(p.arrive)}% fuel left there`);
+    if (price != null && p.arrive >= 0) out.push(`fill-up ≈ ${money(((100 - p.arrive) / 100) * fuelRange.tank_gal * price, 0)}`);
+  }
+  return out;
 }
 async function addStop(x) {
   closeSearch();
@@ -3688,6 +3769,7 @@ async function runCommand(raw, fromModel = false) {
     say(msg);
     return msg;
   }
+  if (/how far (can|could|will) (i|we|it|the truck) (go|get|drive)|(what'?s|what is) (my|the) (driving )?range|(will|can) (i|we|it) make it (on|with)|how much (gas|fuel) (will|would|does) (this|the|that|it)/.test(text)) return rangeSay();
   if (/(gas|fuel) (mileage|economy)|my mileage|how many (mpg|miles per gallon)/.test(text)) {
     await loadTrip();
     const a = tripInfo?.trips.a, now = lastState?.obd?.mpg;
@@ -3845,6 +3927,7 @@ const ACTIONS = {
     if (query) runSearch();
   },
   "nav-start": startNav,
+  "fuel-stops": () => findAhead("gas"),
   "set-home": () => nav.dest && setHome(nav.dest),
   "home-here": () => (lastPos ? setHome({ name: "Home", lat: lastPos.lat, lon: lastPos.lon, address: "" }) : toast("No GPS fix yet")),
   "home-clear": () => setHome(null),

@@ -94,6 +94,8 @@ svg { width: 1.5rem; height: 1.5rem; fill: currentColor; flex: none; }
 .recent span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .dest-name { font-size: 1.4rem; font-weight: 650; margin: 0.2rem 0; }
 .route-sum { color: var(--text-2); font-size: 1.1rem; } .route-sum b { color: var(--good); }
+.route-fuel { color: var(--text-2); font-size: 0.95rem; margin: 0.2rem 0; }
+.route-fuel .fuel-warn { color: var(--bad); font-weight: 600; margin-top: 0.2rem; }
 .maneuver { display: flex; align-items: center; gap: 1rem; }
 .man-icon { width: 4.2rem; height: 4.2rem; color: var(--text); transition: transform 0.3s; }
 .man-dist { font-size: 2.1rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }

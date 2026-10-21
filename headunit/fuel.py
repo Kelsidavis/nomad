@@ -18,6 +18,7 @@ import urllib.request
 
 import config
 import network
+import obd
 import trip
 
 DATA = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit"))
@@ -140,3 +141,41 @@ def summary():
             "spent_30d": round(sum(f["total"] for f in out if f["t"] > month), 2),
             "gallons_30d": round(sum(f["gallons"] for f in out if f["t"] > month), 1),
             "stations": list(stations.values())}
+
+
+# ---- the drive ahead ----
+def _number(key):
+    try:
+        return float(config.get(key))
+    except (TypeError, ValueError):
+        return None
+
+
+def range_info(state=None):
+    """What the tank and the mileage say about a drive, for route planning: mpg (the fill-ups' real average, else
+    what the OBD adapter measured this trip), the tank's size (FUEL_TANK_GAL) and level (the OBD fuel gauge), the
+    range to the reserve (FUEL_RESERVE_PCT, 10 by default) and a price per gallon (the last fill-up, else the
+    state's weekly average). Whatever isn't known is None; the screen skips what it can't work out."""
+    log = summary()
+    o = obd.status()
+    mpg, mpg_from = log["avg_mpg"], "fill-ups"
+    tr = o["trip"]
+    if not mpg and tr["gal"] > 0.3 and tr["km"] > 8:  # enough driving for the trip figure to mean something
+        mpg, mpg_from = round(tr["km"] / KM_PER_MI / tr["gal"], 1), "OBD"
+    if not mpg:
+        mpg_from = None
+    tank, reserve = _number("FUEL_TANK_GAL"), _number("FUEL_RESERVE_PCT")
+    reserve = 10.0 if reserve is None else reserve
+    gauge = o["values"].get("fuel")
+    level = round(gauge["v"], 1) if gauge and time.time() - gauge["t"] < 600 else None
+    gal_left = round(tank * level / 100, 2) if tank and level is not None else None
+    range_mi = round(max(0.0, tank * (level - reserve) / 100) * mpg, 1) if gal_left is not None and mpg else None
+    price, price_from = (log["fillups"][0]["price"], "last fill-up") if log["fillups"] else (None, None)
+    if price is None:
+        for a in prices(state).get("areas", []):
+            reg = a["products"].get("Regular")
+            if reg:
+                price, price_from = reg["price"], f"{a['name']} average"
+                break
+    return {"mpg": mpg, "mpg_from": mpg_from, "tank_gal": tank, "level_pct": level, "gal_left": gal_left,
+            "reserve_pct": reserve, "range_mi": range_mi, "price": price, "price_from": price_from}

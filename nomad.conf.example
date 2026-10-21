@@ -34,3 +34,8 @@ MUSIC_OUT=~/CarMusic
 
 # Bluetooth amp or speaker to keep connected and use as the output (its address: bluetoothctl devices); empty = built-in audio
 #BT_AUDIO=AA:BB:CC:DD:EE:FF
+
+# Fuel planning on routes: the tank's size in US gallons (with the OBD fuel gauge it gives the range), and the
+# percent of the tank to keep in reserve (default 10)
+#FUEL_TANK_GAL=26
+#FUEL_RESERVE_PCT=10

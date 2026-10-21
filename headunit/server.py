@@ -926,6 +926,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, d)
             if path == "/api/fuel":  # fill-ups with mpg, money spent, stations' prices, and the weekly averages
                 return self.send(200, {**fuel.summary(), "prices": fuel.prices(_state_code())})
+            if path == "/api/fuel/range":  # mpg, tank level and range, price per gallon: what a route needs to plan fuel
+                return self.send(200, fuel.range_info(_state_code()))
             if path == "/api/trip":  # odometer, trips A and B, oil change
                 return self.send(200, trip.status())
             if path == "/api/obd":  # everything from the OBD adapter, codes included

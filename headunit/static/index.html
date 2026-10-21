@@ -97,9 +97,11 @@
           <div class="eyebrow">Route</div>
           <div class="dest-name" id="pv-name"></div>
           <div class="route-sum"><b id="pv-time"></b> · <span id="pv-dist"></span></div>
+          <div class="route-fuel" id="pv-fuel" hidden></div>
           <div class="btn-row">
             <button class="btn primary" data-action="nav-start">Start</button>
             <button class="btn" data-action="nav-cancel">Cancel</button>
+            <button class="btn" id="pv-fuel-btn" data-action="fuel-stops" hidden>Fuel stops</button>
             <button class="btn" data-action="set-home"><svg><use href="#i-home"/></svg>Set as home</button>
           </div>
         </div>
@@ -113,6 +115,7 @@
           </div>
           <div class="nav-then" id="nav-then"></div>
           <div class="nav-wx" id="nav-wx" hidden></div>
+          <div class="route-fuel" id="nav-fuel" hidden></div>
           <div class="nav-foot">
             <div><b id="nav-eta"></b><span>arrival</span></div>
             <div><b id="nav-left-time"></b><span>left</span></div>
