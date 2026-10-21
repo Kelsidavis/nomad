@@ -4195,7 +4195,7 @@ function tick() {
   const now = (radio.weather?.hourly || []).find((h) => new Date(h.t).getTime() + 3600000 > Date.now());
   const t = now?.temp ?? radio.weather?.periods?.[0]?.temperature;
   $("#rail-temp").hidden = t == null;
-  if (t != null) $("#rail-temp").textContent = settings.units === "imperial" ? `${t}°` : `${Math.round((t - 32) * 5 / 9)}°`;
+  if (t != null) $("#rail-temp").textContent = settings.units === "imperial" ? `${t}°F` : `${Math.round((t - 32) * 5 / 9)}°C`;
   applyTheme();
 }
 tick();

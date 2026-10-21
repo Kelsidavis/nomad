@@ -2,12 +2,16 @@
 package) demodulates the frames; this decodes them (identity, position, altitude, speed and heading) and keeps the
 aircraft heard in the last minute for the map and the Radio screen.
 
-The SDR does one thing at a time: ADS-B runs while the map's Aircraft layer or the Radio screen's Aircraft tab is
-open (or always, from that tab) and the radio isn't tuned or capturing a satellite; listening wins and ADS-B waits.
+The SDR does one thing at a time. ADS-B is its filler: it runs whenever the radio isn't tuned and no satellite pass is
+being captured (turn that off with "Keep receiving in the background" on the Radio screen's Aircraft tab, which
+then limits it to while the map's Aircraft layer or that tab is open); listening and satellites always win.
 Range depends on the antenna: the Nooelec's telescopic whip pulled out to about 6.9 cm (a quarter wave) and
 mounted high, or a 1090 MHz antenna, hears planes 50-150 km away; the truck's AM/FM antenna hears little.
 """
+import json
 import math
+import os
+import pathlib
 import shutil
 import subprocess
 import threading
@@ -20,7 +24,17 @@ NZ = 15
 KEEP_S = 60
 _lock = threading.Lock()
 _planes = {}  # icao -> state
-_st = {"proc": None, "wanted_until": 0.0, "always": False, "frames": 0, "good": 0, "started": None, "error": None}
+SETTING = pathlib.Path(os.environ.get("HEADUNIT_DATA", pathlib.Path.home() / ".local/share/headunit")) / "adsb.json"
+
+
+def _saved_always():
+    try:
+        return bool(json.loads(SETTING.read_text())["always"])
+    except (OSError, ValueError, KeyError):
+        return True  # on unless turned off: the dongle has nothing better to do between the radio and satellite passes
+
+
+_st = {"proc": None, "wanted_until": 0.0, "always": _saved_always(), "frames": 0, "good": 0, "started": None, "error": None}
 _ref = {"pos": None}  # (lat, lon) to decode positions against
 _ctl = threading.Lock()  # starting and stopping rtl_adsb, so a satellite capture can never find it half-started
 
@@ -199,6 +213,11 @@ def want(seconds=20):
 
 def set_always(on):
     _st["always"] = bool(on)
+    try:
+        SETTING.parent.mkdir(parents=True, exist_ok=True)
+        SETTING.write_text(json.dumps({"always": _st["always"]}))
+    except OSError:
+        pass
 
 
 def _busy():
