@@ -418,6 +418,8 @@ async function initMap() {
     center: lastPos ? [lastPos.lon, lastPos.lat] : home ? [home.lon, home.lat] : [-98.6, 39.8], zoom: lastPos ? 16 : home ? 12 : 3.5,
   });
   map.addControl(new maplibregl.AttributionControl({ compact: true }), "top-right");
+  // the credits show once, then fold into their small (i) button, faint; tap it to read them again
+  setTimeout(() => $(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show"), 6000);
   map.on("styleimagemissing", (e) => {
     if (e.id === "plane" && !map.hasImage("plane")) map.addImage("plane", planeImage(), { sdf: true });
     if (e.id === "ship" && !map.hasImage("ship")) map.addImage("ship", shipImage(), { sdf: true });

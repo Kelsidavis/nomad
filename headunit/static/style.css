@@ -803,3 +803,6 @@ body.panel-hidden[data-music] .map-np { display: flex; }
 .hd-progs .btn { min-height: 2.6rem; } .hd-progs .btn.on { background: var(--accent); color: var(--accent-text); }
 /* "Waiting for GPS" steps up out of the way of the now-playing strip when that shows over the map */
 body.panel-hidden[data-music] #no-fix { bottom: 6.6rem; }
+.maplibregl-ctrl-attrib.maplibregl-compact { transition: opacity 1.2s; }
+.maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show) { opacity: 0.3; }
+.maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show):hover, .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show):active { opacity: 1; }
