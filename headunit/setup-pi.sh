@@ -145,19 +145,6 @@ mkdir -p /etc/systemd/system.conf.d /etc/systemd/journald.conf.d /var/log/journa
 printf '[Manager]\nRuntimeWatchdogSec=15\nRebootWatchdogSec=2min\n' > /etc/systemd/system.conf.d/nomad-watchdog.conf
 printf '[Journal]\nStorage=persistent\nSystemMaxUse=30M\nSyncIntervalSec=30s\n' > /etc/systemd/journald.conf.d/nomad.conf
 
-echo "== a disk that survives power cuts: no delayed allocation (a cut right after a write otherwise leaves files full of zeros)"
-if ! grep -E '^[^#].*[[:space:]]/[[:space:]]+ext4' /etc/fstab | grep -q nodelalloc; then
-    sed -i -E '/^[^#].*[[:space:]]\/[[:space:]]+ext4/ s/(ext4[[:space:]]+)([^[:space:]]+)/\1\2,nodelalloc,commit=5/' /etc/fstab  # (takes effect at the next boot)
-fi
-
-echo "== CPU speed cap (CPU_MAX_MHZ in nomad.conf; empty = none): a Pi 5 on a weak supply browns out at full speed under load"
-if [ -n "${CPU_MAX_MHZ:-}" ]; then
-    echo "w /sys/devices/system/cpu/cpufreq/policy0/scaling_max_freq - - - - $((CPU_MAX_MHZ * 1000))" > /etc/tmpfiles.d/nomad-cpu-cap.conf
-    systemd-tmpfiles --create /etc/tmpfiles.d/nomad-cpu-cap.conf
-else
-    rm -f /etc/tmpfiles.d/nomad-cpu-cap.conf
-fi
-
 echo "== faster boot"
 # Nothing here needs the internet, and in the car there is usually no Wi-Fi: waiting for it held up Docker
 # (and so offline routing) at every boot. cloud-init only matters on the first boot; packagekit is desktop updates.
